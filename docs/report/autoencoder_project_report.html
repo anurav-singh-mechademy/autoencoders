@@ -1,0 +1,1104 @@
+<title>Autoencoder Equipment Health Monitoring &#183; Project Report</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ground:#F1F5F6; --surface:#FFFFFF; --surface-2:#E7EEF0; --surface-3:#DCE6E9;
+    --ink:#0E2027; --ink-2:#456068; --ink-3:#7A939B;
+    --rule:#D6E0E3; --rule-strong:#B4C5CB;
+    --accent:#00809B; --accent-soft:#E2F0F4;
+    --accent-2:#A65E0E;
+    --seq-1:#8CC4D4; --seq-2:#3F9DB6; --seq-3:#00647C;
+    --on-seq-1:#0E2027; --on-seq-2:#FFFFFF; --on-seq-3:#FFFFFF;
+    --ok:#1F7A4D; --ok-bg:#E3F1EA; --ok-line:#A9D6BE; --on-ok:#FFFFFF;
+    --warn:#8F6206; --warn-bg:#F7EEDA; --warn-line:#E0C68A;
+    --crit:#A8322A; --crit-bg:#F8E6E3; --crit-line:#E2B0A9;
+    --shadow:0 1px 2px rgba(14,32,39,.05), 0 8px 24px -18px rgba(14,32,39,.28);
+
+    --display:"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+    --body:Charter,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --data:"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --ground:#0A1216; --surface:#121D22; --surface-2:#1A272C; --surface-3:#22333A;
+      --ink:#E3EDEF; --ink-2:#9AB1B8; --ink-3:#6E878F;
+      --rule:#223238; --rule-strong:#33474E;
+      --accent:#2E9BC4; --accent-soft:#132A34;
+      --accent-2:#B27C28;
+      --seq-1:#1D5A6E; --seq-2:#3E9AB8; --seq-3:#8CCADE;
+      --on-seq-1:#DCEEF4; --on-seq-2:#08151A; --on-seq-3:#08151A;
+      --ok:#5CBE86; --ok-bg:#12271D; --ok-line:#2C5A41; --on-ok:#08151A;
+      --warn:#DFA84A; --warn-bg:#2A2113; --warn-line:#5B4A24;
+      --crit:#EB7C6E; --crit-bg:#2B1614; --crit-line:#5E322C;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground:#0A1216; --surface:#121D22; --surface-2:#1A272C; --surface-3:#22333A;
+    --ink:#E3EDEF; --ink-2:#9AB1B8; --ink-3:#6E878F;
+    --rule:#223238; --rule-strong:#33474E;
+    --accent:#2E9BC4; --accent-soft:#132A34;
+    --accent-2:#B27C28;
+    --seq-1:#1D5A6E; --seq-2:#3E9AB8; --seq-3:#8CCADE;
+    --on-seq-1:#DCEEF4; --on-seq-2:#08151A; --on-seq-3:#08151A;
+    --ok:#5CBE86; --ok-bg:#12271D; --ok-line:#2C5A41; --on-ok:#08151A;
+    --warn:#DFA84A; --warn-bg:#2A2113; --warn-line:#5B4A24;
+    --crit:#EB7C6E; --crit-bg:#2B1614; --crit-line:#5E322C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -18px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground:#F1F5F6; --surface:#FFFFFF; --surface-2:#E7EEF0; --surface-3:#DCE6E9;
+    --ink:#0E2027; --ink-2:#456068; --ink-3:#7A939B;
+    --rule:#D6E0E3; --rule-strong:#B4C5CB;
+    --accent:#00809B; --accent-soft:#E2F0F4; --accent-2:#A65E0E;
+    --seq-1:#8CC4D4; --seq-2:#3F9DB6; --seq-3:#00647C;
+    --on-seq-1:#0E2027; --on-seq-2:#FFFFFF; --on-seq-3:#FFFFFF;
+    --ok:#1F7A4D; --ok-bg:#E3F1EA; --ok-line:#A9D6BE; --on-ok:#FFFFFF;
+    --warn:#8F6206; --warn-bg:#F7EEDA; --warn-line:#E0C68A;
+    --crit:#A8322A; --crit-bg:#F8E6E3; --crit-line:#E2B0A9;
+  }
+
+  body {
+    background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:17px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page { max-width:1108px; margin:0 auto; padding:0 28px 120px; }
+  .col { max-width:68ch; }
+  p { margin:0 0 1.05em; }
+  p:last-child { margin-bottom:0; }
+  a { color:var(--accent); text-decoration:none; border-bottom:1px solid var(--rule-strong); }
+  a:hover { border-bottom-color:var(--accent); }
+  a:focus-visible, details > summary:focus-visible {
+    outline:2px solid var(--accent); outline-offset:3px; border-radius:2px;
+  }
+  strong { font-weight:600; }
+  code, .mono { font-family:var(--data); font-size:.86em; }
+  code {
+    background:var(--surface-2); padding:.1em .38em; border-radius:3px;
+    color:var(--ink); white-space:nowrap;
+  }
+  .num { font-family:var(--data); font-variant-numeric:tabular-nums; }
+
+  /* ── masthead ─────────────────────────────────────────────── */
+  .masthead { padding:76px 0 0; }
+  .kicker {
+    font-family:var(--data); font-size:11px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 22px;
+    display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+  }
+  .kicker::after { content:""; flex:1; height:1px; background:var(--rule); min-width:24px; }
+  h1 {
+    font-family:var(--display); font-weight:600; font-size:clamp(2.3rem,5.2vw,3.7rem);
+    line-height:1.04; letter-spacing:-.022em; margin:0 0 .5em; text-wrap:balance;
+    max-width:22ch;
+  }
+  .standfirst {
+    font-size:1.22rem; line-height:1.5; color:var(--ink-2); max-width:60ch; margin:0 0 40px;
+  }
+  .byline {
+    display:flex; gap:28px; flex-wrap:wrap; padding:18px 0;
+    border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+    font-family:var(--data); font-size:12px; color:var(--ink-3);
+    letter-spacing:.04em; text-transform:uppercase;
+  }
+  .byline b { color:var(--ink); font-weight:500; text-transform:none; letter-spacing:0; }
+
+  /* ── stat rail ────────────────────────────────────────────── */
+  .stats {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:1px; background:var(--rule); border:1px solid var(--rule);
+    margin:0 0 8px; border-radius:6px; overflow:hidden;
+  }
+  .stat { background:var(--surface); padding:20px 18px 18px; }
+  .stat .v {
+    font-family:var(--display); font-weight:600; font-size:1.85rem;
+    letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1.1;
+  }
+  .stat .k {
+    font-family:var(--data); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); margin-top:7px; line-height:1.4;
+  }
+  .stat-note {
+    font-family:var(--data); font-size:11px; color:var(--ink-3); letter-spacing:.03em;
+    margin:0 0 64px;
+  }
+
+  /* ── sections ─────────────────────────────────────────────── */
+  section { margin:0 0 76px; }
+  .eyebrow {
+    font-family:var(--data); font-size:10.5px; letter-spacing:.17em; text-transform:uppercase;
+    color:var(--ink-3); margin:0 0 14px; padding-bottom:12px;
+    border-bottom:1px solid var(--rule); display:block;
+  }
+  h2 {
+    font-family:var(--display); font-weight:600; font-size:clamp(1.6rem,3vw,2.15rem);
+    line-height:1.14; letter-spacing:-.018em; margin:0 0 .7em; text-wrap:balance; max-width:30ch;
+  }
+  h3 {
+    font-family:var(--display); font-weight:600; font-size:1.14rem; letter-spacing:-.008em;
+    margin:44px 0 .55em; text-wrap:balance;
+  }
+  h4 {
+    font-family:var(--data); font-weight:500; font-size:11.5px; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:32px 0 12px;
+  }
+  .lede { font-size:1.09rem; color:var(--ink-2); max-width:62ch; }
+
+  /* ── panels ───────────────────────────────────────────────── */
+  .panel {
+    background:var(--surface); border:1px solid var(--rule); border-radius:8px;
+    padding:26px 28px; margin:30px 0; box-shadow:var(--shadow);
+  }
+  .panel > :first-child { margin-top:0; }
+  .panel-t {
+    font-family:var(--display); font-weight:600; font-size:1.02rem; margin:0 0 4px;
+  }
+  .panel-s {
+    font-size:.94rem; color:var(--ink-2); margin:0 0 22px; max-width:74ch;
+  }
+  figure { margin:0; }
+  figcaption {
+    font-size:.9rem; color:var(--ink-2); margin-top:18px; padding-top:16px;
+    border-top:1px solid var(--rule); max-width:78ch;
+  }
+  .chart-wrap { overflow-x:auto; }
+  .chart-wrap svg { width:100%; min-width:600px; height:auto; display:block; }
+
+  /* ── chart primitives ─────────────────────────────────────── */
+  .c-grid { stroke:var(--rule); stroke-width:1; }
+  .c-axis { stroke:var(--rule-strong); stroke-width:1; }
+  .c-annot { stroke:var(--rule-strong); stroke-width:1; stroke-dasharray:3 3; }
+  .c-thresh { stroke-width:2; stroke-dasharray:6 4; }
+  .c-tick, .c-axtitle, .c-rowlab, .c-total, .c-inbar, .c-annotlab, .c-serieslab,
+  .c-bandlab, .a-dim, .a-stage, .a-note, .z-tick, .z-lab, .z-cap {
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+  }
+  .c-tick { font-size:11px; fill:var(--ink-3); }
+  .c-axtitle { font-size:10.5px; fill:var(--ink-3); letter-spacing:.09em; text-transform:uppercase; }
+  .c-rowlab { font-size:12.5px; fill:var(--ink); }
+  .c-total { font-size:12.5px; fill:var(--ink-2); }
+  .c-inbar { font-size:11px; font-weight:500; }
+  .c-annotlab { font-size:11px; fill:var(--ink-2); }
+  .c-serieslab { font-size:12px; font-weight:500; }
+  .c-bandlab { font-size:10.5px; fill:var(--ink-3); letter-spacing:.12em; text-transform:uppercase; }
+  .ln { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .dot { stroke:var(--surface); stroke-width:2; }
+  .mark, .dot { transition:opacity .12s ease; }
+  .chart-wrap svg:hover .mark { opacity:.72; }
+  .chart-wrap svg .mark:hover { opacity:1; }
+  .a-dim { font-size:11px; fill:var(--ink-3); }
+  .a-rule { stroke:var(--rule-strong); stroke-width:1; }
+  .a-stage { font-size:10.5px; fill:var(--ink-3); letter-spacing:.06em; }
+  .a-stage-lat { fill:var(--accent-2); }
+  .a-note { font-size:11px; fill:var(--ink-3); letter-spacing:.08em; text-transform:uppercase; }
+  .z-lab { font-size:11.5px; font-weight:500; letter-spacing:.05em; }
+  .z-tick { font-size:11px; fill:var(--ink-3); }
+  .z-cap { font-size:11px; font-weight:500; letter-spacing:.05em; }
+
+  .legend {
+    display:flex; gap:20px; flex-wrap:wrap; margin:0 0 18px;
+    font-family:var(--data); font-size:11.5px; color:var(--ink-2);
+  }
+  .legend span { display:flex; align-items:center; gap:7px; }
+  .legend i { width:11px; height:11px; border-radius:2.5px; flex:none; }
+  .legend .ln-swatch { width:16px; height:3px; border-radius:2px; }
+
+  /* ── tables ───────────────────────────────────────────────── */
+  .t-wrap { overflow-x:auto; margin:24px 0; }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; min-width:520px; }
+  caption {
+    text-align:left; font-family:var(--data); font-size:10.5px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); padding-bottom:12px;
+  }
+  th, td { text-align:left; padding:10px 14px 10px 0; border-bottom:1px solid var(--rule); vertical-align:top; }
+  th {
+    font-family:var(--data); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500; border-bottom:1px solid var(--rule-strong);
+    white-space:nowrap;
+  }
+  td { color:var(--ink-2); }
+  td:first-child { color:var(--ink); }
+  tbody tr:last-child td { border-bottom:none; }
+  .tfoot { font-family:var(--data); font-variant-numeric:tabular-nums; color:var(--ink); border-top:1px solid var(--rule-strong); }
+  table .num, td.n { font-family:var(--data); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  details { margin:20px 0 0; }
+  details > summary {
+    cursor:pointer; font-family:var(--data); font-size:11px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-3); list-style:none;
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  details > summary::-webkit-details-marker { display:none; }
+  details > summary::before { content:"+"; color:var(--accent); font-size:14px; }
+  details[open] > summary::before { content:"\2212"; }
+  details > summary:hover { color:var(--ink); }
+  details table { font-size:.85rem; }
+
+  /* ── chips ────────────────────────────────────────────────── */
+  .chip {
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+    font-family:var(--data); font-size:10.5px; letter-spacing:.05em; font-weight:500;
+    padding:3px 9px; border-radius:11px; border:1px solid;
+  }
+  .chip::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+  .chip-ok { color:var(--ok); background:var(--ok-bg); border-color:var(--ok-line); }
+  .chip-warn { color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line); }
+  .chip-crit { color:var(--crit); background:var(--crit-bg); border-color:var(--crit-line); }
+  .chip-idle { color:var(--ink-3); background:var(--surface-2); border-color:var(--rule-strong); }
+
+  /* ── findings ─────────────────────────────────────────────── */
+  .finding {
+    background:var(--surface); border:1px solid var(--rule); border-radius:8px;
+    padding:0; margin:26px 0; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .finding-hd {
+    display:flex; gap:16px; align-items:baseline; flex-wrap:wrap;
+    padding:20px 26px; border-bottom:1px solid var(--rule); background:var(--surface-2);
+  }
+  .finding-ref {
+    font-family:var(--data); font-size:11px; color:var(--ink-3); letter-spacing:.1em;
+  }
+  .finding-hd h3 { margin:0; font-size:1.1rem; flex:1; min-width:14ch; }
+  .finding-bd { padding:22px 26px 26px; }
+  .finding-bd > :first-child { margin-top:0; }
+  .kv { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:6px 22px; }
+  .kv dt {
+    font-family:var(--data); font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--ink-3); padding-top:3px;
+  }
+  .kv dd { margin:0; color:var(--ink-2); }
+  .kv dd code { white-space:normal; }
+  .evidence {
+    font-family:var(--data); font-size:12px; line-height:1.75; background:var(--ground);
+    border:1px solid var(--rule); border-left:2px solid var(--accent);
+    border-radius:0 5px 5px 0; padding:14px 18px; margin:18px 0;
+    overflow-x:auto; white-space:pre; color:var(--ink-2);
+  }
+  .evidence b { color:var(--ink); font-weight:500; }
+
+  /* ── step list ────────────────────────────────────────────── */
+  .stage { margin:0 0 4px; }
+  .stage-hd {
+    display:flex; align-items:baseline; gap:14px; padding:14px 0 10px;
+    border-bottom:1px solid var(--rule-strong);
+  }
+  .stage-hd h3 { margin:0; font-size:1.02rem; }
+  .stage-hd .rng { font-family:var(--data); font-size:11px; color:var(--ink-3); letter-spacing:.08em; }
+  ol.steps { list-style:none; margin:0 0 34px; padding:0; counter-reset:none; }
+  ol.steps li {
+    display:grid; grid-template-columns:34px 1fr; gap:0 16px;
+    padding:13px 0; border-bottom:1px solid var(--rule); align-items:baseline;
+  }
+  ol.steps li:last-child { border-bottom:none; }
+  ol.steps .n {
+    font-family:var(--data); font-size:11.5px; color:var(--accent);
+    font-variant-numeric:tabular-nums; padding-top:2px;
+  }
+  ol.steps .b { font-size:.97rem; }
+  ol.steps .b b { font-weight:600; color:var(--ink); }
+  ol.steps .b span { color:var(--ink-2); }
+  ol.steps .src {
+    display:block; font-family:var(--data); font-size:11px; color:var(--ink-3); margin-top:4px;
+  }
+
+  .two { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:28px; }
+  ul.plain { margin:0 0 1em; padding-left:1.15em; }
+  ul.plain li { margin-bottom:.42em; }
+  ul.plain li::marker { color:var(--rule-strong); }
+
+  hr.div {
+    border:none; border-top:1px solid var(--rule); margin:76px 0;
+  }
+  .endnote {
+    font-size:.9rem; color:var(--ink-3); border-top:1px solid var(--rule);
+    padding-top:22px; margin-top:76px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition:none !important; animation:none !important; }
+  }
+  @media (max-width:640px) {
+    body { font-size:16px; }
+    .masthead { padding-top:48px; }
+    .panel { padding:20px 18px; }
+    .finding-hd, .finding-bd { padding-left:18px; padding-right:18px; }
+  }
+</style>
+
+<div class="page">
+
+<header class="masthead">
+  <p class="kicker">Project report &#183; Autoencoder &#183; 4 August 2026</p>
+  <h1>Teaching a machine what healthy looks like</h1>
+  <p class="standfirst">
+    A feedforward autoencoder that watches all of an equipment unit&#8217;s sensors at once,
+    learns the fingerprint of healthy operation, and flags coordinated drift that
+    per&#8209;sensor alarms cannot see. This is where the build currently stands &#8212; the
+    design, the code, the numbers from the last full run, and the three things that
+    need fixing before it can be trusted.
+  </p>
+  <div class="byline">
+    <span>Repository <b>Autoencoder</b></span>
+    <span>Package <b>autoencoder 0.1.0</b></span>
+    <span>Stack <b>PyTorch 2 &#183; Ray 2.54 &#183; scikit&#8209;learn</b></span>
+    <span>Last full run <b>17 Mar 2026, 23:06&#8211;23:12</b></span>
+  </div>
+</header>
+
+<section>
+  <div class="stats">
+    <div class="stat"><div class="v">158</div><div class="k">sensor tags modelled</div></div>
+    <div class="stat"><div class="v">10,468</div><div class="k">clean 30&#8209;min windows</div></div>
+    <div class="stat"><div class="v">63,409</div><div class="k">model parameters</div></div>
+    <div class="stat"><div class="v">9.1%</div><div class="k">windows removed by cleaning</div></div>
+    <div class="stat"><div class="v">21</div><div class="k">epochs to early stop</div></div>
+    <div class="stat"><div class="v">162</div><div class="k">tests, all passing</div></div>
+  </div>
+  <p class="stat-note">Figures read from <code>output/artefacts/</code> and <code>logs/autoencoder.log</code>; test count from a fresh <code>pytest</code> run.</p>
+</section>
+
+<section>
+  <span class="eyebrow">The gap this fills</span>
+  <h2>Two monitoring layers exist. Neither sees the machine as a whole.</h2>
+  <div class="col">
+    <p class="lede">
+      Equipment rarely fails because one sensor spikes. It fails because many sensors
+      drift together in a way that only makes sense when you look at all of them at once
+      &#8212; a small rise in bearing temperature, a slight drop in lube oil pressure, a minor
+      lift in vibration. Individually unremarkable. Together, a story.
+    </p>
+    <p>
+      The existing stack checks each sensor against a fixed limit every 15 seconds, and
+      runs XGBoost predictions on a handful of key tags. Both are useful and both are
+      blind to coordinated multivariate drift. The autoencoder is the third layer: one
+      model per equipment unit, every sensor in the input, trained only on healthy data.
+    </p>
+  </div>
+
+  <div class="t-wrap">
+  <table>
+    <caption>Monitoring stack &#183; three independent layers</caption>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Granularity</th><th>Blind spot</th></tr></thead>
+    <tbody>
+      <tr><td>Timestamp</td><td>Physics thresholds <span class="chip chip-idle">existing</span></td><td class="n">1 sensor / 15 s</td><td>No cross&#8209;sensor relationships; fires only once severe</td></tr>
+      <tr><td>Tag</td><td>XGBoost regressors <span class="chip chip-idle">existing</span></td><td class="n">few sensors / 30 min</td><td>Covers only the tags it was trained on</td></tr>
+      <tr><td>Equipment</td><td>Autoencoder <span class="chip chip-ok">this project</span></td><td class="n">all 158 sensors / 30 min</td><td>Cannot name the fault type, only that something is wrong and which sensors carry it</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="col">
+    <h3>Why an autoencoder, and why feedforward</h3>
+    <p>
+      An autoencoder compresses each reading through a narrow bottleneck and rebuilds it.
+      Train it only on healthy data and it learns the relationships that hold when the
+      machine is well. When those relationships shift, reconstruction gets harder and the
+      error rises &#8212; that rising error is the anomaly signal. No labelled failures needed,
+      which matters because real industrial faults are rare enough that supervised
+      learning is not an option.
+    </p>
+    <p>
+      Feedforward rather than LSTM because within a 30&#8209;minute window the ordering of
+      readings does not change the assessment. It trains faster, needs less data, and the
+      per&#8209;sensor error falls out directly &#8212; which is what makes the diagnosis layer free.
+      A temporal architecture is deliberately deferred to a later phase.
+    </p>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">How it is put together</span>
+  <h2>Nine packages, each one stage of the pipeline</h2>
+  <div class="col">
+    <p class="lede">
+      The prototype was two Jupyter notebooks (still kept in <code>old_autoencoder_code/</code>
+      for reference). The current codebase is an installable package: 2,887 lines across
+      36 modules in <code>src/autoencoder/</code>, plus a 493&#8209;line orchestrator and 1,615 lines
+      of tests. Every stage is a pure function returning a dataclass, which is why the
+      test suite can cover the pipeline without a live model.
+    </p>
+  </div>
+
+  <div class="t-wrap">
+  <table>
+    <caption>Package map &#183; implementation state</caption>
+    <thead><tr><th>Package</th><th>Modules</th><th>Responsibility</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td><code>data/</code></td><td class="n">5</td><td>Load &amp; validate, low&#8209;variance filter, RobustScaler, window construction, KMeans regimes, transient detection</td><td><span class="chip chip-warn">partly wired</span></td></tr>
+      <tr><td><code>cleaning/</code></td><td class="n">4</td><td>Isolation Forest &#8594; PCA &#8594; Mahalanobis, plus plot&#8209;based validation</td><td><span class="chip chip-ok">wired</span></td></tr>
+      <tr><td><code>model/</code></td><td class="n">2</td><td>Symmetric autoencoder, MSE variants, window score, sensor contributions</td><td><span class="chip chip-ok">wired</span></td></tr>
+      <tr><td><code>training/</code></td><td class="n">3</td><td>Window&#8209;boundary splits, local trainer with early stopping, Ray trainer, grid search</td><td><span class="chip chip-warn">partly wired</span></td></tr>
+      <tr><td><code>alerting/</code></td><td class="n">3</td><td>Percentile thresholds, elbow calibration, zone classification, persistence rules</td><td><span class="chip chip-warn">partly wired</span></td></tr>
+      <tr><td><code>inference/</code></td><td class="n">3</td><td>Single&#8209;window pipeline, missing&#8209;data handling, per&#8209;sensor diagnosis</td><td><span class="chip chip-ok">wired</span></td></tr>
+      <tr><td><code>monitoring/</code></td><td class="n">3</td><td>Rolling error trend, KS drift tests, weekly health log, retrain triggers</td><td><span class="chip chip-crit">not wired</span></td></tr>
+      <tr><td><code>artefacts/</code></td><td class="n">1</td><td>Save / load the six&#8209;file model bundle</td><td><span class="chip chip-ok">wired</span></td></tr>
+      <tr><td><code>reporting/</code></td><td class="n">1</td><td>HTML cleaning report with embedded diagnostic plots</td><td><span class="chip chip-ok">wired</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="col" style="font-size:.92rem;color:var(--ink-2)">
+    &#8220;Wired&#8221; means reachable from <code>main.py</code> or a script in <code>scripts/</code>. Modules
+    marked otherwise are implemented and unit&#8209;tested but have no caller &#8212; itemised
+    in <a href="#gaps">Built but not wired</a>.
+  </p>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">The pipeline</span>
+  <h2>Thirteen steps, in strict order</h2>
+  <div class="col">
+    <p class="lede">
+      Order matters here, and the spec is explicit about it: scaling before cleaning so
+      outliers cannot distort the normalisation; regime segmentation before cleaning so
+      healthy low&#8209;load windows are not judged against high&#8209;load ones. What follows is
+      what <code>main.py</code> actually executes, not what the spec asks for &#8212; the
+      differences are called out.
+    </p>
+  </div>
+
+  <div class="stage">
+    <div class="stage-hd"><h3>Prepare and clean</h3><span class="rng">steps 1&#8211;7</span></div>
+    <ol class="steps">
+      <li><span class="n">01</span><span class="b"><b>Load and validate</b> <span>&#8212; CSV or Parquet, parse the timestamp column, sort by time, reject non&#8209;numeric sensor columns. The March run read 1,382,400 rows &#215; 161 columns.</span><span class="src">data/ingestion.py</span></span></li>
+      <li><span class="n">02</span><span class="b"><b>Drop low&#8209;variance columns</b> <span>&#8212; variance &#8804; 1e&#8209;5 means a stuck sensor or a constant setpoint, which adds noise without signal. Removed <code>tag_132</code> and <code>tag_133</code>, leaving 158.</span><span class="src">data/preprocessing.py</span></span></li>
+      <li><span class="n">03</span><span class="b"><b>Fit RobustScaler</b> <span>&#8212; <code>(X &#8722; median) / IQR</code>, fit on training data only and serialised for reuse. Refitting at inference would silently shift the input distribution.</span><span class="src">data/preprocessing.py</span></span></li>
+      <li><span class="n">04</span><span class="b"><b>Build 30&#8209;minute windows</b> <span>&#8212; 120 rows at 15&#8209;second intervals; the trailing partial window is dropped. 1,382,400 rows &#8594; 11,520 windows.</span><span class="src">data/preprocessing.py</span></span></li>
+      <li><span class="n">05</span><span class="b"><b>Segment operating regimes</b> <span>&#8212; KMeans (k=3) on load indicators, clusters re&#8209;ordered so 0=Low and 2=High. Result: Low 4,269 &#183; Medium 3,007 &#183; High 4,244.</span><span class="src">data/regime.py</span></span></li>
+      <li><span class="n">06</span><span class="b"><b>Clean within each regime</b> <span>&#8212; Isolation Forest, then PCA reconstruction error, then Mahalanobis distance, each applied separately per regime and recombined. Every removal is logged.</span><span class="src">data/cleaning.py, cleaning/*</span></span></li>
+      <li><span class="n">07</span><span class="b"><b>Validate and report</b> <span>&#8212; 10 random sensor&#8209;pair scatter plots before/after, a window&#8209;mean histogram, a per&#8209;step removal chart, and a self&#8209;contained HTML audit report.</span><span class="src">cleaning/validation.py, reporting/</span></span></li>
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="stage-hd"><h3>Train and calibrate</h3><span class="rng">steps 8&#8211;11</span></div>
+    <ol class="steps">
+      <li><span class="n">08</span><span class="b"><b>Split at window boundaries</b> <span>&#8212; 85 / 10 / 5, never inside a window, so adjacent timesteps cannot leak across the split. Gave 8,897 / 1,046 / 525.</span><span class="src">training/dataset.py</span></span></li>
+      <li><span class="n">09</span><span class="b"><b>Train with early stopping</b> <span>&#8212; one window (120 rows) per gradient update, Adam at 1e&#8209;3, ReduceLROnPlateau, patience 15, best weights restored at the end.</span><span class="src">training/trainer.py</span></span></li>
+      <li><span class="n">10</span><span class="b"><b>Calibrate thresholds and baselines</b> <span>&#8212; re&#8209;score the whole training set, take P90 and P99 of the window scores, and compute per&#8209;sensor mean MSE on the test split as the ratio denominator.</span><span class="src">alerting/thresholds.py, training/trainer.py</span></span></li>
+      <li><span class="n">11</span><span class="b"><b>Save the bundle</b> <span>&#8212; weights, scaler, thresholds, metadata, training error distribution, sensor baselines, and training history. A model loaded without its matching scaler fails silently, so they version together.</span><span class="src">artefacts/serialisation.py</span></span></li>
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="stage-hd"><h3>Score and alert</h3><span class="rng">steps 12&#8211;13</span></div>
+    <ol class="steps">
+      <li><span class="n">12</span><span class="b"><b>Score each window</b> <span>&#8212; check the equipment is running, forward&#8209;fill gaps under 4 rows, reject any window with &gt;5% nulls on a sensor, scale, forward pass in <code>eval()</code>, then per&#8209;row and per&#8209;sensor MSE. The window score is the 95th percentile of the 120 row errors.</span><span class="src">inference/pipeline.py</span></span></li>
+      <li><span class="n">13</span><span class="b"><b>Classify, persist, diagnose</b> <span>&#8212; Green / Yellow / Red against the saved thresholds, then the persistence rule before any alert leaves the system, then rank sensors by their share of the error.</span><span class="src">alerting/zones.py, alerting/persistence.py, inference/diagnosis.py</span></span></li>
+    </ol>
+  </div>
+
+  <div class="panel">
+    <p class="panel-t">Alert logic as implemented</p>
+    <p class="panel-s">The persistence rule is the single biggest lever on false&#8209;alarm volume &#8212; a lone Red window never reaches the client.</p>
+    <div class="t-wrap">
+    <table>
+      <thead><tr><th>Pattern observed</th><th>Alert raised</th><th>State</th></tr></thead>
+      <tbody>
+        <tr><td>1 Red window in isolation</td><td>None &#8212; internal log only</td><td><span class="chip chip-ok">implemented</span></td></tr>
+        <tr><td>2 consecutive Red</td><td>Yellow to client</td><td><span class="chip chip-ok">implemented</span></td></tr>
+        <tr><td>3 or more consecutive Red</td><td>Red to client</td><td><span class="chip chip-ok">implemented</span></td></tr>
+        <tr><td>4 or more consecutive Yellow</td><td>Yellow to client</td><td><span class="chip chip-ok">implemented</span></td></tr>
+        <tr><td>Mixed Red + Yellow within 2 hours</td><td>Yellow to client</td><td><span class="chip chip-crit">missing</span></td></tr>
+        <tr><td>Return to Green after an alert</td><td>All&#8209;clear, duration logged</td><td><span class="chip chip-crit">missing</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <figcaption>
+      <code>mixed_window_hours: 2</code> is present in <code>configs/default.yaml</code> but
+      <code>apply_persistence()</code> only counts trailing consecutive runs, so the mixed&#8209;window
+      rule and the all&#8209;clear notification are not yet reachable.
+    </figcaption>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">The model</span>
+  <h2>158 in, 19 in the middle, 158 out</h2>
+  <div class="col">
+    <p class="lede">
+      The bottleneck is the whole point. Nineteen units cannot memorise 158 sensors, so
+      the network is forced to learn the relationships between them instead &#8212; and those
+      relationships are what break when the machine degrades.
+    </p>
+  </div>
+
+  <div class="panel">
+    <figure>
+      <div class="chart-wrap"><svg viewBox="0 0 800 244" role="img" aria-label="Symmetric autoencoder: 158 inputs compressed to a 19-unit latent layer and reconstructed back to 158">
+  <path d="M 83,58.0 L 167,72.1 L 251,102.0 L 335,117.0 L 419,123.1 L 503,117.0 L 587,102.0 L 671,72.1 L 755,58.0 L 755,206.0 L 671,191.9 L 587,162.0 L 503,147.0 L 419,140.9 L 335,147.0 L 251,162.0 L 167,191.9 L 83,206.0 Z" fill="var(--accent)" opacity="0.07"/>
+  <rect x="62" y="58.0" width="42" height="148.0" rx="4" fill="var(--rule-strong)"><title>158 sensors units</title></rect><text class="a-dim" x="83" y="49.0" text-anchor="middle">158</text><rect x="146" y="72.1" width="42" height="119.9" rx="4" fill="var(--seq-2)"><title>128 units</title></rect><text class="a-dim" x="167" y="63.1" text-anchor="middle">128</text><rect x="230" y="102.0" width="42" height="59.9" rx="4" fill="var(--seq-2)"><title>64 units</title></rect><text class="a-dim" x="251" y="93.0" text-anchor="middle">64</text><rect x="314" y="117.0" width="42" height="30.0" rx="4" fill="var(--seq-2)"><title>32 units</title></rect><text class="a-dim" x="335" y="108.0" text-anchor="middle">32</text><rect x="398" y="123.1" width="42" height="17.8" rx="4" fill="var(--accent-2)"><title>19 units</title></rect><text class="a-dim" x="419" y="114.1" text-anchor="middle">19</text><rect x="482" y="117.0" width="42" height="30.0" rx="4" fill="var(--seq-2)"><title>32 units</title></rect><text class="a-dim" x="503" y="108.0" text-anchor="middle">32</text><rect x="566" y="102.0" width="42" height="59.9" rx="4" fill="var(--seq-2)"><title>64 units</title></rect><text class="a-dim" x="587" y="93.0" text-anchor="middle">64</text><rect x="650" y="72.1" width="42" height="119.9" rx="4" fill="var(--seq-2)"><title>128 units</title></rect><text class="a-dim" x="671" y="63.1" text-anchor="middle">128</text><rect x="734" y="58.0" width="42" height="148.0" rx="4" fill="var(--rule-strong)"><title>158 units</title></rect><text class="a-dim" x="755" y="49.0" text-anchor="middle">158</text>
+  <line class="a-rule" x1="146" y1="216" x2="356" y2="216"/>
+  <text class="a-stage" x="251" y="232" text-anchor="middle">encoder</text>
+  <line class="a-rule" x1="398" y1="216" x2="440" y2="216"/>
+  <text class="a-stage a-stage-lat" x="419" y="232" text-anchor="middle">latent</text>
+  <line class="a-rule" x1="482" y1="216" x2="692" y2="216"/>
+  <text class="a-stage" x="587" y="232" text-anchor="middle">decoder</text>
+  <text class="a-stage" x="83" y="232" text-anchor="middle">input</text>
+  <text class="a-stage" x="755" y="232" text-anchor="middle">output</text>
+  <text class="a-note" x="419" y="26" text-anchor="middle">8.3&#215; compression &#183; 63,409 parameters</text>
+</svg></div>
+      <figcaption>
+        Latent width comes from <code>max(8, N // 8)</code>, giving 19 for 158 sensors. Worth
+        noting: the spec&#8217;s own guidance table recommends L = 24&#8211;32 for N &#8805; 150, so the
+        formula and the table disagree at this sensor count. The formula won by default.
+        Dropout sits on the first two encoder blocks only, and both the latent and output
+        layers are linear because scaled sensor values are unbounded in both directions.
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="t-wrap">
+  <table>
+    <caption>Hyperparameters &#183; specified vs. run</caption>
+    <thead><tr><th>Parameter</th><th>Spec</th><th>Config</th><th>Actual run</th></tr></thead>
+    <tbody>
+      <tr><td>Optimizer</td><td>Adam</td><td>adam</td><td class="n">Adam</td></tr>
+      <tr><td>Learning rate</td><td>1e&#8209;3</td><td class="n">0.001</td><td class="n">1e&#8209;3 &#8594; 5e&#8209;4 at epoch 17</td></tr>
+      <tr><td>LR scheduler</td><td>plateau, &#215;0.5, patience 10</td><td class="n">0.5 / 10</td><td class="n">fired once</td></tr>
+      <tr><td>Weight decay</td><td>1e&#8209;5</td><td class="n">0.00001</td><td class="n">1e&#8209;5</td></tr>
+      <tr><td>Dropout</td><td>0.2 on encoder FC&#8209;1/2</td><td class="n">0.2</td><td class="n">0.2</td></tr>
+      <tr><td>Max epochs</td><td class="n">150</td><td class="n">150</td><td class="n">stopped at 21</td></tr>
+      <tr><td>Early stopping</td><td>patience 15</td><td class="n">15</td><td class="n">triggered</td></tr>
+      <tr><td>Gradient update</td><td>1 window = 120 rows</td><td class="n">1</td><td class="n">1 window</td></tr>
+      <tr><td>Latent dim</td><td>max(8, N/8); table says 24&#8211;32</td><td>max(8, N//8)</td><td class="n">19</td></tr>
+      <tr><td>Score aggregation</td><td>P95 of 120 row errors</td><td>p95</td><td class="n">P95</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="col" style="font-size:.92rem;color:var(--ink-2)">
+    Grid search over latent dim, learning rate and dropout is implemented in
+    <code>training/hyperparams.py</code> and imported by <code>main.py</code>, but never called &#8212;
+    the run used the single default configuration.
+  </p>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">The last full run</span>
+  <h2>11,520 windows in, 10,468 out</h2>
+  <div class="col">
+    <p class="lede">
+      The run was on synthetic data &#8212; eight months of 160 tags at 15&#8209;second intervals,
+      generated with three cycling load regimes, correlated sensor groups, gradual drift on
+      ten tags, five shutdown events and roughly 3% injected anomaly windows. It exists to
+      exercise the pipeline end to end at realistic scale, not to prove detection accuracy.
+    </p>
+    <p>
+      Cleaning removed 9.1% overall, comfortably inside the 40% warning ceiling, and
+      remarkably even across regimes &#8212; 9.0% / 8.9% / 9.4%. That evenness is what you want:
+      it says the per&#8209;regime approach is doing its job rather than deleting one operating
+      mode wholesale.
+    </p>
+  </div>
+
+  <div class="panel">
+    <p class="panel-t">Windows removed by method and regime</p>
+    <p class="panel-s">Isolation Forest does most of the work by design &#8212; its contamination parameter is fixed at 5%, so it removes a set fraction. PCA and Mahalanobis then catch what survives, on progressively cleaner covariance estimates.</p>
+    <div class="legend">
+      <span><i style="background:var(--seq-1)"></i>Low regime</span>
+      <span><i style="background:var(--seq-2)"></i>Medium regime</span>
+      <span><i style="background:var(--seq-3)"></i>High regime</span>
+    </div>
+    <figure>
+      <div class="chart-wrap"><svg viewBox="0 0 740 244" role="img" aria-label="Windows removed by each cleaning method, split by operating regime">
+  <line class="c-grid" x1="176.0" y1="32" x2="176.0" y2="214"/><text class="c-tick" x="176.0" y="230" text-anchor="middle">0</text><line class="c-grid" x1="345.0" y1="32" x2="345.0" y2="214"/><text class="c-tick" x="345.0" y="230" text-anchor="middle">200</text><line class="c-grid" x1="514.1" y1="32" x2="514.1" y2="214"/><text class="c-tick" x="514.1" y="230" text-anchor="middle">400</text><line class="c-grid" x1="683.1" y1="32" x2="683.1" y2="214"/><text class="c-tick" x="683.1" y="230" text-anchor="middle">600</text>
+  <text class="c-rowlab" x="164" y="57" text-anchor="end">Isolation Forest</text><rect class="mark" x="176" y="40" width="178.9" height="26" rx="3" fill="var(--seq-1)"><title>Isolation Forest — Low regime: 214 windows removed</title></rect><text class="c-inbar" x="265.4" y="57" text-anchor="middle" fill="var(--on-seq-1)">214</text><rect class="mark" x="356.9" y="40" width="125.6" height="26" rx="3" fill="var(--seq-2)"><title>Isolation Forest — Medium regime: 151 windows removed</title></rect><text class="c-inbar" x="419.7" y="57" text-anchor="middle" fill="var(--on-seq-2)">151</text><rect class="mark" x="484.5" y="40" width="178.0" height="26" rx="3" fill="var(--seq-3)"><title>Isolation Forest — High regime: 213 windows removed</title></rect><text class="c-inbar" x="573.5" y="57" text-anchor="middle" fill="var(--on-seq-3)">213</text><text class="c-total" x="674.5" y="57">578</text><text class="c-rowlab" x="164" y="115" text-anchor="end">PCA reconstruction</text><rect class="mark" x="176" y="98" width="65.6" height="26" rx="3" fill="var(--seq-1)"><title>PCA reconstruction — Low regime: 80 windows removed</title></rect><text class="c-inbar" x="208.8" y="115" text-anchor="middle" fill="var(--on-seq-1)">80</text><rect class="mark" x="243.6" y="98" width="47.0" height="26" rx="3" fill="var(--seq-2)"><title>PCA reconstruction — Medium regime: 58 windows removed</title></rect><text class="c-inbar" x="267.1" y="115" text-anchor="middle" fill="var(--on-seq-2)">58</text><rect class="mark" x="292.6" y="98" width="83.4" height="26" rx="3" fill="var(--seq-3)"><title>PCA reconstruction — High regime: 101 windows removed</title></rect><text class="c-inbar" x="334.3" y="115" text-anchor="middle" fill="var(--on-seq-3)">101</text><text class="c-total" x="388.0" y="115">239</text><text class="c-rowlab" x="164" y="173" text-anchor="end">Mahalanobis</text><rect class="mark" x="176" y="156" width="74.1" height="26" rx="3" fill="var(--seq-1)"><title>Mahalanobis — Low regime: 90 windows removed</title></rect><text class="c-inbar" x="213.1" y="173" text-anchor="middle" fill="var(--on-seq-1)">90</text><rect class="mark" x="252.1" y="156" width="47.0" height="26" rx="3" fill="var(--seq-2)"><title>Mahalanobis — Medium regime: 58 windows removed</title></rect><text class="c-inbar" x="275.6" y="173" text-anchor="middle" fill="var(--on-seq-2)">58</text><rect class="mark" x="301.1" y="156" width="71.5" height="26" rx="3" fill="var(--seq-3)"><title>Mahalanobis — High regime: 87 windows removed</title></rect><text class="c-inbar" x="336.9" y="173" text-anchor="middle" fill="var(--on-seq-3)">87</text><text class="c-total" x="384.6" y="173">235</text>
+  <text class="c-axtitle" x="176" y="243">windows removed</text>
+</svg></div>
+      <figcaption>
+        Sequential shading tracks regime load, so the ordering is readable without the legend.
+        PCA retained 49 / 35 / 56 components at 95% variance for Low / Medium / High; the
+        Mahalanobis threshold was &#967;&#178; at 97.5% with 158 degrees of freedom, &#8776; 13.95.
+      </figcaption>
+    </figure>
+    <details><summary>Table view</summary><div class="t-wrap"><table>
+<thead><tr><th>Method</th><th>Low</th><th>Medium</th><th>High</th><th>Total</th></tr></thead>
+<tbody>
+<tr><td>Isolation Forest</td><td>214</td><td>151</td><td>213</td><td>578</td></tr>
+<tr><td>PCA reconstruction</td><td>80</td><td>58</td><td>101</td><td>239</td></tr>
+<tr><td>Mahalanobis distance</td><td>90</td><td>58</td><td>87</td><td>235</td></tr>
+<tr><td class="tfoot">Windows removed</td><td class="tfoot">384</td><td class="tfoot">267</td><td class="tfoot">401</td><td class="tfoot">1,052</td></tr>
+</tbody></table></div></details>
+  </div>
+
+  <div class="t-wrap">
+  <table>
+    <caption>Cleaning funnel &#183; per regime</caption>
+    <thead><tr><th>Regime</th><th>Windows in</th><th>After IF</th><th>After PCA</th><th>After Mahalanobis</th><th>Removed</th></tr></thead>
+    <tbody>
+      <tr><td>Low</td><td class="n">4,269</td><td class="n">4,055</td><td class="n">3,975</td><td class="n">3,885</td><td class="n">9.0%</td></tr>
+      <tr><td>Medium</td><td class="n">3,007</td><td class="n">2,856</td><td class="n">2,798</td><td class="n">2,740</td><td class="n">8.9%</td></tr>
+      <tr><td>High</td><td class="n">4,244</td><td class="n">4,031</td><td class="n">3,930</td><td class="n">3,843</td><td class="n">9.4%</td></tr>
+      <tr><td class="tfoot">Total</td><td class="tfoot">11,520</td><td class="tfoot">10,942</td><td class="tfoot">10,703</td><td class="tfoot">10,468</td><td class="tfoot">9.1%</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Training</h3>
+  <div class="panel">
+    <p class="panel-t">Loss across 21 epochs</p>
+    <p class="panel-s">Training loss settles almost immediately &#8212; by epoch 3 it is within 0.2% of where it finishes 18 epochs later. Validation loss bottoms out at epoch 6 and then drifts upward, which is what stopped the run at 21.</p>
+    <div class="legend">
+      <span><i class="ln-swatch" style="background:var(--accent)"></i>Training MSE</span>
+      <span><i class="ln-swatch" style="background:var(--accent-2)"></i>Validation MSE</span>
+    </div>
+    <figure>
+      <div class="chart-wrap"><svg viewBox="0 0 740 296" role="img" aria-label="Training and validation loss across 21 epochs">
+  <line class="c-grid" x1="64" y1="223.9" x2="700" y2="223.9"/><text class="c-tick" x="56" y="227.9" text-anchor="end">0.040</text><line class="c-grid" x1="64" y1="167.7" x2="700" y2="167.7"/><text class="c-tick" x="56" y="171.7" text-anchor="end">0.050</text><line class="c-grid" x1="64" y1="111.5" x2="700" y2="111.5"/><text class="c-tick" x="56" y="115.5" text-anchor="end">0.060</text><line class="c-grid" x1="64" y1="55.2" x2="700" y2="55.2"/><text class="c-tick" x="56" y="59.2" text-anchor="end">0.070</text>
+  <line class="c-axis" x1="64" y1="252" x2="700" y2="252"/>
+  <line class="c-annot" x1="572.8" y1="44" x2="572.8" y2="252"/>
+  <text class="c-annotlab" x="566.8" y="56" text-anchor="end">LR 1e&#8209;3 &#8594; 5e&#8209;4</text>
+  <polyline class="ln" points="64.0,83.7 95.8,86.5 127.6,107.8 159.4,102.8 191.2,102.2 223.0,112.4 254.8,95.8 286.6,82.9 318.4,94.0 350.2,87.0 382.0,82.4 413.8,87.3 445.6,78.8 477.4,85.2 509.2,101.1 541.0,90.5 572.8,101.6 604.6,88.8 636.4,95.4 668.2,70.5 700.0,64.6" stroke="var(--accent-2)"/>
+  <polyline class="ln" points="64.0,108.9 95.8,194.8 127.6,210.3 159.4,214.2 191.2,215.3 223.0,215.1 254.8,216.3 286.6,216.8 318.4,216.9 350.2,216.7 382.0,216.9 413.8,217.3 445.6,217.2 477.4,216.8 509.2,218.7 541.0,224.1 572.8,225.0 604.6,209.4 636.4,189.8 668.2,197.2 700.0,209.9" stroke="var(--accent)"/>
+  <circle class="dot" cx="64.0" cy="108.9" r="3.5" fill="var(--accent)"><title>Epoch 1 — training loss 0.060453</title></circle><circle class="dot" cx="95.8" cy="194.8" r="3.5" fill="var(--accent)"><title>Epoch 2 — training loss 0.045171</title></circle><circle class="dot" cx="127.6" cy="210.3" r="3.5" fill="var(--accent)"><title>Epoch 3 — training loss 0.042421</title></circle><circle class="dot" cx="159.4" cy="214.2" r="3.5" fill="var(--accent)"><title>Epoch 4 — training loss 0.041719</title></circle><circle class="dot" cx="191.2" cy="215.3" r="3.5" fill="var(--accent)"><title>Epoch 5 — training loss 0.041522</title></circle><circle class="dot" cx="223.0" cy="215.1" r="3.5" fill="var(--accent)"><title>Epoch 6 — training loss 0.041563</title></circle><circle class="dot" cx="254.8" cy="216.3" r="3.5" fill="var(--accent)"><title>Epoch 7 — training loss 0.041353</title></circle><circle class="dot" cx="286.6" cy="216.8" r="3.5" fill="var(--accent)"><title>Epoch 8 — training loss 0.041267</title></circle><circle class="dot" cx="318.4" cy="216.9" r="3.5" fill="var(--accent)"><title>Epoch 9 — training loss 0.041236</title></circle><circle class="dot" cx="350.2" cy="216.7" r="3.5" fill="var(--accent)"><title>Epoch 10 — training loss 0.041274</title></circle><circle class="dot" cx="382.0" cy="216.9" r="3.5" fill="var(--accent)"><title>Epoch 11 — training loss 0.041240</title></circle><circle class="dot" cx="413.8" cy="217.3" r="3.5" fill="var(--accent)"><title>Epoch 12 — training loss 0.041175</title></circle><circle class="dot" cx="445.6" cy="217.2" r="3.5" fill="var(--accent)"><title>Epoch 13 — training loss 0.041185</title></circle><circle class="dot" cx="477.4" cy="216.8" r="3.5" fill="var(--accent)"><title>Epoch 14 — training loss 0.041265</title></circle><circle class="dot" cx="509.2" cy="218.7" r="3.5" fill="var(--accent)"><title>Epoch 15 — training loss 0.040921</title></circle><circle class="dot" cx="541.0" cy="224.1" r="3.5" fill="var(--accent)"><title>Epoch 16 — training loss 0.039958</title></circle><circle class="dot" cx="572.8" cy="225.0" r="3.5" fill="var(--accent)"><title>Epoch 17 — training loss 0.039808</title></circle><circle class="dot" cx="604.6" cy="209.4" r="3.5" fill="var(--accent)"><title>Epoch 18 — training loss 0.042574</title></circle><circle class="dot" cx="636.4" cy="189.8" r="3.5" fill="var(--accent)"><title>Epoch 19 — training loss 0.046068</title></circle><circle class="dot" cx="668.2" cy="197.2" r="3.5" fill="var(--accent)"><title>Epoch 20 — training loss 0.044746</title></circle><circle class="dot" cx="700.0" cy="209.9" r="3.5" fill="var(--accent)"><title>Epoch 21 — training loss 0.042489</title></circle><circle class="dot" cx="64.0" cy="83.7" r="3.5" fill="var(--accent-2)"><title>Epoch 1 — validation loss 0.064936</title></circle><circle class="dot" cx="95.8" cy="86.5" r="3.5" fill="var(--accent-2)"><title>Epoch 2 — validation loss 0.064443</title></circle><circle class="dot" cx="127.6" cy="107.8" r="3.5" fill="var(--accent-2)"><title>Epoch 3 — validation loss 0.060642</title></circle><circle class="dot" cx="159.4" cy="102.8" r="3.5" fill="var(--accent-2)"><title>Epoch 4 — validation loss 0.061547</title></circle><circle class="dot" cx="191.2" cy="102.2" r="3.5" fill="var(--accent-2)"><title>Epoch 5 — validation loss 0.061649</title></circle><circle class="dot" cx="223.0" cy="112.4" r="3.5" fill="var(--accent-2)"><title>Epoch 6 — validation loss 0.059834</title></circle><circle class="dot" cx="254.8" cy="95.8" r="3.5" fill="var(--accent-2)"><title>Epoch 7 — validation loss 0.062787</title></circle><circle class="dot" cx="286.6" cy="82.9" r="3.5" fill="var(--accent-2)"><title>Epoch 8 — validation loss 0.065077</title></circle><circle class="dot" cx="318.4" cy="94.0" r="3.5" fill="var(--accent-2)"><title>Epoch 9 — validation loss 0.063106</title></circle><circle class="dot" cx="350.2" cy="87.0" r="3.5" fill="var(--accent-2)"><title>Epoch 10 — validation loss 0.064350</title></circle><circle class="dot" cx="382.0" cy="82.4" r="3.5" fill="var(--accent-2)"><title>Epoch 11 — validation loss 0.065174</title></circle><circle class="dot" cx="413.8" cy="87.3" r="3.5" fill="var(--accent-2)"><title>Epoch 12 — validation loss 0.064296</title></circle><circle class="dot" cx="445.6" cy="78.8" r="3.5" fill="var(--accent-2)"><title>Epoch 13 — validation loss 0.065815</title></circle><circle class="dot" cx="477.4" cy="85.2" r="3.5" fill="var(--accent-2)"><title>Epoch 14 — validation loss 0.064665</title></circle><circle class="dot" cx="509.2" cy="101.1" r="3.5" fill="var(--accent-2)"><title>Epoch 15 — validation loss 0.061841</title></circle><circle class="dot" cx="541.0" cy="90.5" r="3.5" fill="var(--accent-2)"><title>Epoch 16 — validation loss 0.063731</title></circle><circle class="dot" cx="572.8" cy="101.6" r="3.5" fill="var(--accent-2)"><title>Epoch 17 — validation loss 0.061749</title></circle><circle class="dot" cx="604.6" cy="88.8" r="3.5" fill="var(--accent-2)"><title>Epoch 18 — validation loss 0.064037</title></circle><circle class="dot" cx="636.4" cy="95.4" r="3.5" fill="var(--accent-2)"><title>Epoch 19 — validation loss 0.062860</title></circle><circle class="dot" cx="668.2" cy="70.5" r="3.5" fill="var(--accent-2)"><title>Epoch 20 — validation loss 0.067295</title></circle><circle class="dot" cx="700.0" cy="64.6" r="3.5" fill="var(--accent-2)"><title>Epoch 21 — validation loss 0.068329</title></circle>
+  <circle cx="223.0" cy="112.4" r="6.5" fill="none" stroke="var(--accent-2)" stroke-width="2"/>
+  <line class="c-annot" x1="223.0" y1="121.4" x2="223.0" y2="138.4"/>
+  <text class="c-annotlab" x="223.0" y="151.4" text-anchor="middle" fill="var(--accent-2)">best val 0.0598 &#183; epoch 6</text>
+  <text class="c-serieslab" x="692.0" y="225.9" text-anchor="end" fill="var(--accent)">train 0.0425</text>
+  <text class="c-serieslab" x="692.0" y="56.599999999999994" text-anchor="end" fill="var(--accent-2)">val 0.0683</text>
+  <text class="c-tick" x="64.0" y="270" text-anchor="middle">1</text><text class="c-tick" x="191.2" y="270" text-anchor="middle">5</text><text class="c-tick" x="350.2" y="270" text-anchor="middle">10</text><text class="c-tick" x="509.2" y="270" text-anchor="middle">15</text><text class="c-tick" x="700.0" y="270" text-anchor="middle">21</text>
+  <text class="c-axtitle" x="382" y="292" text-anchor="middle">epoch</text>
+</svg></div>
+      <figcaption>
+        Validation loss runs 1.43&#215; to 1.61&#215; training loss for the entire run. The spec calls
+        &gt;1.5&#215; an overfitting signal and sets 1.3&#215; as the Phase&#8239;2 acceptance bar, so on
+        paper this fails. In fact the gap is not overfitting at all &#8212; it is a broken split,
+        which is <a href="#f1">Finding 1</a>.
+      </figcaption>
+    </figure>
+    <details><summary>Table view &#183; 21 epochs</summary><div class="t-wrap"><table>
+<thead><tr><th>Epoch</th><th>Train MSE</th><th>Val MSE</th></tr></thead>
+<tbody><tr><td>1</td><td>0.060453</td><td>0.064936</td></tr><tr><td>2</td><td>0.045171</td><td>0.064443</td></tr><tr><td>3</td><td>0.042421</td><td>0.060642</td></tr><tr><td>4</td><td>0.041719</td><td>0.061547</td></tr><tr><td>5</td><td>0.041522</td><td>0.061649</td></tr><tr><td>6</td><td>0.041563</td><td>0.059834</td></tr><tr><td>7</td><td>0.041353</td><td>0.062787</td></tr><tr><td>8</td><td>0.041267</td><td>0.065077</td></tr><tr><td>9</td><td>0.041236</td><td>0.063106</td></tr><tr><td>10</td><td>0.041274</td><td>0.064350</td></tr><tr><td>11</td><td>0.041240</td><td>0.065174</td></tr><tr><td>12</td><td>0.041175</td><td>0.064296</td></tr><tr><td>13</td><td>0.041185</td><td>0.065815</td></tr><tr><td>14</td><td>0.041265</td><td>0.064665</td></tr><tr><td>15</td><td>0.040921</td><td>0.061841</td></tr><tr><td>16</td><td>0.039958</td><td>0.063731</td></tr><tr><td>17</td><td>0.039808</td><td>0.061749</td></tr><tr><td>18</td><td>0.042574</td><td>0.064037</td></tr><tr><td>19</td><td>0.046068</td><td>0.062860</td></tr><tr><td>20</td><td>0.044746</td><td>0.067295</td></tr><tr><td>21</td><td>0.042489</td><td>0.068329</td></tr></tbody></table></div></details>
+  </div>
+
+  <div class="t-wrap">
+  <table>
+    <caption>Saved artefacts &#183; <code>output/artefacts/</code></caption>
+    <thead><tr><th>File</th><th>Contents</th><th>Shape / value</th></tr></thead>
+    <tbody>
+      <tr><td><code>model_weights.pt</code></td><td>State dict</td><td class="n">63,409 params</td></tr>
+      <tr><td><code>scaler.pkl</code></td><td>Fitted RobustScaler</td><td class="n">158 medians + IQRs</td></tr>
+      <tr><td><code>thresholds.json</code></td><td>P90 / P99 and error summary</td><td class="n">1.3772 / 1.4432</td></tr>
+      <tr><td><code>training_metadata.json</code></td><td>Sensor list, N, L, split sizes, losses</td><td class="n">158 / 19 / 8897&#183;1046&#183;525</td></tr>
+      <tr><td><code>training_error_distribution.npy</code></td><td>Per&#8209;window training scores</td><td class="n">(8,897,)</td></tr>
+      <tr><td><code>sensor_baselines.npy</code></td><td>Per&#8209;sensor mean MSE on test split</td><td class="n">(158,) mean 0.0638</td></tr>
+      <tr><td><code>training_history.json</code></td><td>Per&#8209;epoch train / val / LR</td><td class="n">21 epochs</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="col" style="font-size:.92rem;color:var(--ink-2)">
+    The spec requires <code>training_metadata.json</code> to carry the equipment ID and the
+    training date. Neither is written &#8212; <code>--equipment-id</code> reaches the cleaning report
+    only. Worth closing before anything is versioned per unit.
+  </p>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">Thresholds and zones</span>
+  <h2>The error distribution is not the shape the design assumes</h2>
+  <div class="col">
+    <p class="lede">
+      Thresholds are meant to come from a right&#8209;skewed, unimodal distribution of training
+      error &#8212; that is an explicit Phase&#8239;2 acceptance criterion, and it is why percentiles
+      were chosen over mean &#177; k&#183;&#963;. What the run produced is bimodal: a tall mass of
+      easily&#8209;reconstructed windows near 0.07, a second peak up at 1.40, and a thin middle.
+    </p>
+  </div>
+
+  <div class="panel">
+    <p class="panel-t">Distribution of 8,897 training window scores</p>
+    <p class="panel-s">Skew 0.28, kurtosis &#8722;1.52 &#8212; statistically flat and two&#8209;humped, not the log&#8209;normal shape the threshold method expects.</p>
+    <figure>
+      <div class="chart-wrap"><svg viewBox="0 0 740 314" role="img" aria-label="Distribution of 8,897 training window anomaly scores, with P90 and P99 thresholds marked">
+  <line class="c-grid" x1="64" y1="268.0" x2="700" y2="268.0"/><text class="c-tick" x="56" y="272.0" text-anchor="end">0</text><line class="c-grid" x1="64" y1="217.1" x2="700" y2="217.1"/><text class="c-tick" x="56" y="221.1" text-anchor="end">500</text><line class="c-grid" x1="64" y1="166.2" x2="700" y2="166.2"/><text class="c-tick" x="56" y="170.2" text-anchor="end">1,000</text><line class="c-grid" x1="64" y1="115.3" x2="700" y2="115.3"/><text class="c-tick" x="56" y="119.3" text-anchor="end">1,500</text><line class="c-grid" x1="64" y1="64.4" x2="700" y2="64.4"/><text class="c-tick" x="56" y="68.4" text-anchor="end">2,000</text>
+  <rect x="65.6" y="44" width="27.8" height="224" fill="var(--ok)" opacity="0.16"/>
+  <rect class="mark" x="65.0" y="49.5" width="24.5" height="218.5" rx="3" fill="var(--accent)"><title>2,146 windows scored 0.065&#8211;0.123</title></rect><rect class="mark" x="91.5" y="223.1" width="24.5" height="44.9" rx="3" fill="var(--accent)"><title>441 windows scored 0.123&#8211;0.182</title></rect><rect class="mark" x="118.0" y="222.9" width="24.5" height="45.1" rx="3" fill="var(--accent)"><title>443 windows scored 0.182&#8211;0.241</title></rect><rect class="mark" x="144.5" y="230.0" width="24.5" height="38.0" rx="3" fill="var(--accent)"><title>373 windows scored 0.241&#8211;0.300</title></rect><rect class="mark" x="171.0" y="235.7" width="24.5" height="32.3" rx="3" fill="var(--accent)"><title>317 windows scored 0.300&#8211;0.359</title></rect><rect class="mark" x="197.5" y="241.4" width="24.5" height="26.6" rx="3" fill="var(--accent)"><title>261 windows scored 0.359&#8211;0.417</title></rect><rect class="mark" x="224.0" y="242.5" width="24.5" height="25.5" rx="3" fill="var(--accent)"><title>250 windows scored 0.417&#8211;0.476</title></rect><rect class="mark" x="250.5" y="243.6" width="24.5" height="24.4" rx="3" fill="var(--accent)"><title>240 windows scored 0.476&#8211;0.535</title></rect><rect class="mark" x="277.0" y="245.4" width="24.5" height="22.6" rx="3" fill="var(--accent)"><title>222 windows scored 0.535&#8211;0.594</title></rect><rect class="mark" x="303.5" y="244.6" width="24.5" height="23.4" rx="3" fill="var(--accent)"><title>230 windows scored 0.594&#8211;0.652</title></rect><rect class="mark" x="330.0" y="258.9" width="24.5" height="9.1" rx="3" fill="var(--accent)"><title>89 windows scored 0.652&#8211;0.711</title></rect><rect class="mark" x="356.5" y="253.9" width="24.5" height="14.1" rx="3" fill="var(--accent)"><title>138 windows scored 0.711&#8211;0.770</title></rect><rect class="mark" x="383.0" y="246.1" width="24.5" height="21.9" rx="3" fill="var(--accent)"><title>215 windows scored 0.770&#8211;0.829</title></rect><rect class="mark" x="409.5" y="246.6" width="24.5" height="21.4" rx="3" fill="var(--accent)"><title>210 windows scored 0.829&#8211;0.888</title></rect><rect class="mark" x="436.0" y="245.6" width="24.5" height="22.4" rx="3" fill="var(--accent)"><title>220 windows scored 0.888&#8211;0.946</title></rect><rect class="mark" x="462.5" y="247.0" width="24.5" height="21.0" rx="3" fill="var(--accent)"><title>206 windows scored 0.946&#8211;1.005</title></rect><rect class="mark" x="489.0" y="245.0" width="24.5" height="23.0" rx="3" fill="var(--accent)"><title>226 windows scored 1.005&#8211;1.064</title></rect><rect class="mark" x="515.5" y="244.4" width="24.5" height="23.6" rx="3" fill="var(--accent)"><title>232 windows scored 1.064&#8211;1.123</title></rect><rect class="mark" x="542.0" y="241.6" width="24.5" height="26.4" rx="3" fill="var(--accent)"><title>259 windows scored 1.123&#8211;1.181</title></rect><rect class="mark" x="568.5" y="237.6" width="24.5" height="30.4" rx="3" fill="var(--accent)"><title>299 windows scored 1.181&#8211;1.240</title></rect><rect class="mark" x="595.0" y="234.3" width="24.5" height="33.7" rx="3" fill="var(--accent)"><title>331 windows scored 1.240&#8211;1.299</title></rect><rect class="mark" x="621.5" y="222.2" width="24.5" height="45.8" rx="3" fill="var(--accent)"><title>450 windows scored 1.299&#8211;1.358</title></rect><rect class="mark" x="648.0" y="189.4" width="24.5" height="78.6" rx="3" fill="var(--accent)"><title>772 windows scored 1.358&#8211;1.417</title></rect><rect class="mark" x="674.5" y="234.7" width="24.5" height="33.3" rx="3" fill="var(--accent)"><title>327 windows scored 1.417&#8211;1.475</title></rect>
+  <line class="c-axis" x1="64" y1="268" x2="700" y2="268"/>
+  <line class="c-thresh" x1="655.7" y1="40" x2="655.7" y2="268" stroke="var(--warn)"/>
+  <line class="c-thresh" x1="685.5" y1="40" x2="685.5" y2="268" stroke="var(--crit)"/>
+  <text class="c-annotlab" x="648.7" y="112" text-anchor="end" fill="var(--warn)">P90 = 1.3772</text>
+  <text class="c-annotlab" x="678.5" y="150" text-anchor="end" fill="var(--crit)">P99 = 1.4432</text>
+  <text class="c-annotlab" x="103.39999999999999" y="62" fill="var(--ok)">all 525 test windows land here</text>
+  <text class="c-tick" x="125.0" y="286" text-anchor="middle">0.2</text><text class="c-tick" x="215.2" y="286" text-anchor="middle">0.4</text><text class="c-tick" x="305.4" y="286" text-anchor="middle">0.6</text><text class="c-tick" x="395.5" y="286" text-anchor="middle">0.8</text><text class="c-tick" x="485.7" y="286" text-anchor="middle">1.0</text><text class="c-tick" x="575.9" y="286" text-anchor="middle">1.2</text><text class="c-tick" x="666.0" y="286" text-anchor="middle">1.4</text>
+  <text class="c-axtitle" x="382" y="310" text-anchor="middle">window anomaly score (P95 of 120 per&#8209;row errors)</text>
+</svg></div>
+      <figcaption>
+        Roughly a third of training windows (32.7%) score above 1.0 and 12.4% score above
+        1.358, so P90 lands at 1.3772 &#8212; deep inside the upper hump. Everything below that
+        line classifies as Green, including most of the upper mode. Meanwhile P90 and P99
+        are only 0.066 apart, leaving the entire Yellow band at 4.7% of the observed range.
+        The early&#8209;warning zone has almost no width to work in.
+      </figcaption>
+    </figure>
+    <details><summary>Table view &#183; 24 bins</summary><div class="t-wrap"><table>
+<thead><tr><th>Score bin</th><th>Windows</th></tr></thead>
+<tbody><tr><td>0.065 &#8211; 0.123</td><td>2,146</td></tr><tr><td>0.123 &#8211; 0.182</td><td>441</td></tr><tr><td>0.182 &#8211; 0.241</td><td>443</td></tr><tr><td>0.241 &#8211; 0.300</td><td>373</td></tr><tr><td>0.300 &#8211; 0.359</td><td>317</td></tr><tr><td>0.359 &#8211; 0.417</td><td>261</td></tr><tr><td>0.417 &#8211; 0.476</td><td>250</td></tr><tr><td>0.476 &#8211; 0.535</td><td>240</td></tr><tr><td>0.535 &#8211; 0.594</td><td>222</td></tr><tr><td>0.594 &#8211; 0.652</td><td>230</td></tr><tr><td>0.652 &#8211; 0.711</td><td>89</td></tr><tr><td>0.711 &#8211; 0.770</td><td>138</td></tr><tr><td>0.770 &#8211; 0.829</td><td>215</td></tr><tr><td>0.829 &#8211; 0.888</td><td>210</td></tr><tr><td>0.888 &#8211; 0.946</td><td>220</td></tr><tr><td>0.946 &#8211; 1.005</td><td>206</td></tr><tr><td>1.005 &#8211; 1.064</td><td>226</td></tr><tr><td>1.064 &#8211; 1.123</td><td>232</td></tr><tr><td>1.123 &#8211; 1.181</td><td>259</td></tr><tr><td>1.181 &#8211; 1.240</td><td>299</td></tr><tr><td>1.240 &#8211; 1.299</td><td>331</td></tr><tr><td>1.299 &#8211; 1.358</td><td>450</td></tr><tr><td>1.358 &#8211; 1.417</td><td>772</td></tr><tr><td>1.417 &#8211; 1.475</td><td>327</td></tr></tbody></table></div></details>
+  </div>
+
+  <div class="panel">
+    <p class="panel-t">The same thresholds drawn on the score axis</p>
+    <figure>
+      <div class="chart-wrap"><svg viewBox="0 0 740 152" role="img" aria-label="Score axis split into Green, Yellow and Red zones; the Yellow band occupies under 5 percent of the observed range">
+  <text class="z-cap" x="708" y="20" text-anchor="end" fill="var(--warn)">YELLOW band &#183; 4.7% of range</text>
+  <text class="z-cap" x="708" y="38" text-anchor="end" fill="var(--crit)">RED band &#183; 2.3% of range</text>
+  <rect x="30" y="52" width="630.4" height="34" rx="3" fill="var(--ok)" opacity="0.88"/>
+  <rect x="662.4" y="52" width="29.8" height="34" fill="var(--warn)" opacity="0.92"/>
+  <rect x="694.4" y="52" width="13.8" height="34" rx="3" fill="var(--crit)" opacity="0.92"/>
+  <line class="c-annot" x1="677" y1="42" x2="677" y2="52"/>
+  <line class="c-annot" x1="701" y1="42" x2="701" y2="52"/>
+  <text class="z-lab" x="345" y="74" text-anchor="middle" fill="var(--on-ok)">GREEN &#183; 93.0% of the observed range</text>
+  <text class="z-tick" x="30" y="104" text-anchor="start">0.0647</text>
+  <text class="z-tick" x="661.4" y="104" text-anchor="middle">1.3772</text>
+  <text class="z-tick" x="708" y="120" text-anchor="end">1.4754 max</text>
+  <rect x="31.6" y="48" width="29.9" height="42" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+  <line class="c-annot" x1="46" y1="90" x2="46" y2="134"/>
+  <text class="z-tick" x="70" y="140" fill="var(--accent)">all 525 test windows sit here: 0.068 &#8211; 0.130</text>
+</svg></div>
+      <figcaption>
+        Green spans 93.0% of the observed range, Yellow 4.7%, Red 2.3%. A window has to be
+        almost the worst thing in the training set before it registers as a watch item &#8212;
+        and the 525 test windows all sit at the far left, in the bottom 14th percentile.
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="col">
+    <p>
+      This is not a bug in <code>compute_thresholds()</code>, which does exactly what it says.
+      It is a consequence of what went into it &#8212; and the cause turns out to be the same
+      one behind the validation gap. That is the next section.
+    </p>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section id="findings">
+  <span class="eyebrow">Findings</span>
+  <h2>Three things to fix before this can be trusted</h2>
+  <div class="col">
+    <p class="lede">
+      All three surfaced while reproducing the run rather than from reading the code. Two
+      are single&#8209;line fixes with large consequences; the third is a design decision that
+      needs a call.
+    </p>
+  </div>
+
+  <div class="finding" id="f1">
+    <div class="finding-hd">
+      <span class="finding-ref">F1</span>
+      <h3>Validation and test contain only the highest&#8209;load regime</h3>
+      <span class="chip chip-crit">blocking</span>
+    </div>
+    <div class="finding-bd">
+      <p>
+        <code>run_cleaning_pipeline()</code> loops over regimes and appends each regime&#8217;s
+        survivors in turn, so <code>cleaned_windows.npy</code> comes out <em>ordered by regime</em>,
+        not by time. <code>split_windows()</code> then takes contiguous slices. The result is that
+        the 85/10/5 split cuts along regime boundaries instead of across them.
+      </p>
+      <div class="evidence">block boundaries in cleaned_windows.npy
+  Low      idx     0&#8211; 3885   load mean <b>&#8722;0.578</b>   range [&#8722;0.726, &#8722;0.304]
+  Medium   idx  3885&#8211; 6625   load mean <b>+0.003</b>   range [&#8722;0.276, +0.282]
+  High     idx  6625&#8211;10468   load mean <b>+0.562</b>   range [+0.300, +0.706]
+
+split boundaries    train 0&#8211;8897 | val 8897&#8211;9943 | test 9943&#8211;10468
+&#8594; val and test fall entirely inside the High block
+  train  load range [&#8722;0.726, +0.705]
+  val    load range [<b>+0.302</b>, +0.706]
+  test   load range [<b>+0.311</b>, +0.704]</div>
+      <p>
+        Reconstruction error on this data is almost entirely a function of load
+        &#8212; <span class="num">corr(score, load) = &#8722;0.960</span>. The low&#8209;load half of the data
+        averages a score of 1.00; the high&#8209;load half averages 0.13. So a split that
+        isolates the High regime does not produce a harder or easier validation set, it
+        produces a <em>different distribution</em>.
+      </p>
+      <div class="panel" style="margin:22px 0 0;box-shadow:none">
+        <p class="panel-t">Score against operating load</p>
+        <figure>
+          <div class="chart-wrap"><svg viewBox="0 0 740 338" role="img" aria-label="Window anomaly score plotted against operating load, showing near-perfect inverse correlation; validation and test cover only the high-load band">
+  <rect x="86.3" y="44" width="174.3" height="228" fill="var(--surface-2)"/><text class="c-bandlab" x="173.4" y="36" text-anchor="middle">Low regime</text><rect x="272.1" y="44" width="230.4" height="228" fill="var(--surface-2)"/><text class="c-bandlab" x="387.3" y="36" text-anchor="middle">Medium regime</text><rect x="510.0" y="44" width="167.7" height="228" fill="var(--surface-2)"/><text class="c-bandlab" x="593.9" y="36" text-anchor="middle">High regime</text>
+  <line class="c-grid" x1="64" y1="272.0" x2="700" y2="272.0"/><text class="c-tick" x="56" y="276.0" text-anchor="end">0.0</text><line class="c-grid" x1="64" y1="213.2" x2="700" y2="213.2"/><text class="c-tick" x="56" y="217.2" text-anchor="end">0.4</text><line class="c-grid" x1="64" y1="154.3" x2="700" y2="154.3"/><text class="c-tick" x="56" y="158.3" text-anchor="end">0.8</text><line class="c-grid" x1="64" y1="95.5" x2="700" y2="95.5"/><text class="c-tick" x="56" y="99.5" text-anchor="end">1.2</text>
+  <circle cx="175.3" cy="111.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="163.3" cy="102.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="139.0" cy="87.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="135.5" cy="86.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="106.9" cy="68.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.0" cy="58.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="101.3" cy="63.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="103.5" cy="65.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="119.6" cy="75.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="202.2" cy="127.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="218.8" cy="137.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="173.8" cy="112.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="160.0" cy="103.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="101.6" cy="66.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="98.5" cy="62.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="104.1" cy="67.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="130.3" cy="83.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="132.2" cy="85.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="142.8" cy="90.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="215.7" cy="136.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="252.6" cy="158.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="219.5" cy="140.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="149.6" cy="95.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="146.3" cy="95.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="137.6" cy="88.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="132.9" cy="86.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="102.0" cy="67.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.8" cy="58.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="90.1" cy="59.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="96.0" cy="63.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="116.7" cy="76.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="129.5" cy="82.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="133.4" cy="87.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="209.4" cy="132.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="91.0" cy="62.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="115.3" cy="76.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="220.3" cy="140.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="239.0" cy="152.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="235.9" cy="149.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="226.8" cy="145.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="153.0" cy="101.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="140.0" cy="92.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="131.4" cy="86.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="108.3" cy="73.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="93.6" cy="62.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.8" cy="61.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="145.2" cy="95.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="172.4" cy="111.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="199.7" cy="128.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="217.5" cy="140.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="247.6" cy="158.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="248.2" cy="157.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="235.6" cy="150.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="207.0" cy="134.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="130.2" cy="85.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.0" cy="61.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.4" cy="63.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="92.3" cy="62.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="91.4" cy="63.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="117.8" cy="80.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="253.2" cy="161.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="238.8" cy="152.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="229.6" cy="149.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="208.7" cy="135.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="174.4" cy="115.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="166.5" cy="110.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.0" cy="60.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="95.7" cy="66.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="143.2" cy="96.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="157.3" cy="103.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="170.7" cy="112.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="179.4" cy="119.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="231.3" cy="147.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="212.9" cy="138.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="206.6" cy="136.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="152.4" cy="102.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="131.2" cy="89.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="106.3" cy="74.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="105.5" cy="72.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.9" cy="64.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="90.1" cy="65.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="123.4" cy="84.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="228.6" cy="148.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="163.2" cy="108.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="158.4" cy="106.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="111.5" cy="77.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.6" cy="65.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="90.1" cy="63.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="110.8" cy="77.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="117.1" cy="81.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="125.2" cy="86.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="153.8" cy="103.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="212.9" cy="140.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="230.1" cy="148.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="224.6" cy="147.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="174.0" cy="117.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="94.1" cy="67.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.7" cy="63.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="92.3" cy="65.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="104.7" cy="72.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="137.1" cy="95.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="159.6" cy="108.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="183.4" cy="125.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="182.6" cy="121.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="133.8" cy="92.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="109.7" cy="77.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="108.3" cy="76.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="93.6" cy="67.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.1" cy="66.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.9" cy="64.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="150.2" cy="101.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="156.4" cy="106.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="178.7" cy="121.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="248.6" cy="159.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="225.1" cy="148.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="213.3" cy="142.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="197.3" cy="132.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="165.3" cy="113.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="164.4" cy="112.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="120.4" cy="83.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="90.6" cy="65.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.3" cy="66.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="106.9" cy="76.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="180.4" cy="123.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="177.4" cy="120.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="153.2" cy="106.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="96.6" cy="70.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="126.9" cy="88.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="146.4" cy="101.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="200.2" cy="134.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="162.3" cy="112.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="121.5" cy="86.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="120.1" cy="84.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="108.5" cy="78.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="107.4" cy="78.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="92.5" cy="69.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.6" cy="65.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="96.8" cy="71.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="104.4" cy="74.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="127.0" cy="90.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="146.3" cy="102.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="158.0" cy="108.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="161.7" cy="110.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="166.8" cy="113.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="196.1" cy="131.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="247.9" cy="163.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="101.3" cy="73.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.1" cy="67.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="112.5" cy="82.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="161.6" cy="112.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="211.3" cy="141.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="142.0" cy="101.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="142.7" cy="100.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="89.2" cy="67.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="88.7" cy="65.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="95.1" cy="70.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="104.5" cy="76.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="177.9" cy="124.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="233.1" cy="153.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="144.4" cy="101.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="131.8" cy="94.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="94.0" cy="69.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="97.0" cy="73.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="110.2" cy="81.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="116.7" cy="85.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="133.0" cy="95.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="162.4" cy="113.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="217.0" cy="145.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="228.7" cy="151.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="255.5" cy="167.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="488.4" cy="245.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="433.6" cy="231.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="416.4" cy="226.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="326.2" cy="192.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="365.1" cy="208.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="398.1" cy="220.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="448.8" cy="234.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="294.4" cy="178.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="281.2" cy="171.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="292.0" cy="177.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="316.7" cy="188.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="368.7" cy="210.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="387.2" cy="217.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="468.3" cy="242.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="478.3" cy="243.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="407.9" cy="225.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="358.3" cy="207.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="364.5" cy="200.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="438.8" cy="234.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="448.7" cy="237.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="480.2" cy="244.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="498.1" cy="247.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="478.8" cy="244.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="359.5" cy="208.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="421.2" cy="231.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="451.4" cy="238.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="461.5" cy="242.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="473.8" cy="244.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="413.7" cy="227.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="403.9" cy="226.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="350.8" cy="206.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="321.8" cy="192.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="286.7" cy="176.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="295.0" cy="180.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="337.2" cy="199.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="477.8" cy="245.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="481.7" cy="247.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="345.0" cy="202.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="331.7" cy="199.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="455.0" cy="241.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="462.4" cy="241.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="472.6" cy="244.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="455.8" cy="241.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="413.9" cy="228.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="392.5" cy="221.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="383.6" cy="219.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="282.6" cy="177.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="333.5" cy="201.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="378.1" cy="217.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="397.0" cy="223.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="353.2" cy="208.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="333.5" cy="200.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="446.8" cy="238.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="407.5" cy="227.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="349.9" cy="206.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="321.9" cy="196.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="283.5" cy="178.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="303.2" cy="188.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="309.9" cy="189.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="331.4" cy="200.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="391.7" cy="222.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="405.5" cy="227.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="415.9" cy="229.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="495.1" cy="250.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="465.2" cy="244.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="433.7" cy="235.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="307.8" cy="189.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="284.2" cy="178.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="448.8" cy="239.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="459.1" cy="243.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="427.1" cy="234.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="315.5" cy="193.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="361.6" cy="212.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="366.4" cy="215.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="451.5" cy="241.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="467.2" cy="245.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="385.9" cy="220.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="312.2" cy="190.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="292.2" cy="183.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="334.3" cy="201.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="337.0" cy="202.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="407.7" cy="228.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="424.7" cy="233.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="443.4" cy="238.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="498.7" cy="250.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="456.5" cy="242.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="419.5" cy="233.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="416.0" cy="231.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="394.3" cy="224.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="392.1" cy="223.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="314.0" cy="192.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="277.1" cy="175.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="383.5" cy="220.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="398.1" cy="225.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="459.3" cy="244.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="435.9" cy="237.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="400.1" cy="227.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="335.6" cy="202.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="329.0" cy="200.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="293.8" cy="184.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="367.0" cy="216.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="369.1" cy="217.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="419.5" cy="233.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="489.3" cy="247.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="358.4" cy="213.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="353.3" cy="211.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="366.2" cy="215.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="368.9" cy="215.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="444.0" cy="239.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="459.5" cy="242.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="449.1" cy="241.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="441.9" cy="237.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="362.8" cy="213.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="354.4" cy="211.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="281.2" cy="179.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="296.7" cy="186.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="307.2" cy="191.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="355.1" cy="212.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="380.5" cy="220.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="391.0" cy="225.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="484.2" cy="247.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="439.0" cy="238.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="399.6" cy="227.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="286.3" cy="182.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="281.6" cy="179.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="388.3" cy="224.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="419.6" cy="232.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="439.8" cy="238.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="455.6" cy="242.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="485.6" cy="248.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="491.5" cy="249.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="548.1" cy="254.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="574.4" cy="255.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="613.4" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="642.6" cy="258.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="671.3" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="556.6" cy="255.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="545.9" cy="253.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="532.9" cy="251.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="534.8" cy="254.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="545.1" cy="255.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="574.6" cy="256.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="617.9" cy="259.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="638.9" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="668.2" cy="258.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="652.9" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="651.9" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="634.7" cy="260.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="624.1" cy="259.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="553.4" cy="255.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="622.3" cy="259.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="648.1" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="671.4" cy="258.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="669.6" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="638.7" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="544.6" cy="254.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="518.2" cy="251.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="563.0" cy="257.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="628.6" cy="259.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="640.5" cy="260.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="672.1" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="674.7" cy="257.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="670.5" cy="258.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="667.5" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="653.8" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="595.5" cy="259.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="555.9" cy="257.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="545.3" cy="256.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="535.2" cy="254.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="566.1" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="586.4" cy="259.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="637.1" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="646.9" cy="260.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="664.0" cy="257.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.0" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="659.8" cy="259.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="645.3" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="598.1" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="584.3" cy="259.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="558.1" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="528.0" cy="253.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="510.2" cy="251.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="518.5" cy="252.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="671.7" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="673.4" cy="258.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.3" cy="258.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="526.8" cy="254.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="618.9" cy="261.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="623.4" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="637.4" cy="260.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="673.3" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="676.5" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="661.1" cy="260.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="638.0" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="634.1" cy="260.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="621.2" cy="260.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="519.6" cy="254.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="572.0" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="660.5" cy="260.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="662.3" cy="260.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="662.5" cy="261.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="667.8" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="671.8" cy="259.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.1" cy="259.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="670.7" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="657.3" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="630.5" cy="261.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="617.6" cy="261.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="583.5" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="598.0" cy="260.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="639.1" cy="260.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="644.6" cy="261.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="658.7" cy="260.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.8" cy="258.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="672.0" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="666.3" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="660.0" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="613.6" cy="261.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="595.0" cy="261.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="593.8" cy="261.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="524.6" cy="254.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="552.9" cy="258.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="600.9" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="616.9" cy="261.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="617.4" cy="261.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="629.7" cy="260.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="672.9" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="673.9" cy="259.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.1" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="625.7" cy="262.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="593.9" cy="260.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="515.5" cy="253.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="523.1" cy="254.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="535.9" cy="256.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="538.9" cy="256.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="561.2" cy="259.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="660.3" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="665.6" cy="259.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="668.1" cy="259.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.9" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="668.7" cy="258.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="644.9" cy="262.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="627.8" cy="260.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="608.2" cy="261.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="575.9" cy="260.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="569.7" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="570.6" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="627.5" cy="261.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="631.4" cy="260.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="638.1" cy="261.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="657.0" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="664.2" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="670.9" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="656.8" cy="260.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="637.7" cy="261.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="617.5" cy="261.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="563.8" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="555.3" cy="257.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="540.4" cy="256.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="541.2" cy="257.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="546.3" cy="257.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="560.7" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="629.1" cy="260.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="665.8" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="666.9" cy="259.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="668.9" cy="257.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="659.0" cy="259.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="548.3" cy="258.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="566.9" cy="258.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="584.9" cy="260.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="590.1" cy="261.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="623.9" cy="259.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="673.4" cy="258.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="674.1" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="659.7" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="654.5" cy="261.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="640.5" cy="261.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="601.3" cy="260.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="548.1" cy="257.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="540.3" cy="256.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="514.9" cy="253.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="537.1" cy="256.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="629.2" cy="260.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="662.5" cy="260.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="674.8" cy="259.0" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="662.3" cy="259.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="659.4" cy="259.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="648.2" cy="260.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="617.8" cy="260.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="612.0" cy="261.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="517.0" cy="253.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="544.8" cy="256.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="572.7" cy="260.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="578.5" cy="260.6" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="619.5" cy="261.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="669.6" cy="258.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="674.0" cy="258.4" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="670.8" cy="258.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="662.0" cy="259.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="651.5" cy="259.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="591.5" cy="260.8" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="599.6" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="658.3" cy="258.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="675.5" cy="258.2" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="668.5" cy="258.1" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="661.9" cy="258.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="599.3" cy="260.9" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="552.8" cy="258.3" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="569.3" cy="259.5" r="2.4" fill="var(--accent)" opacity="0.5"/><circle cx="591.2" cy="260.7" r="2.4" fill="var(--accent)" opacity="0.5"/>
+  <line class="c-axis" x1="64" y1="272" x2="700" y2="272"/>
+  <line class="c-thresh" x1="64" y1="69.4" x2="700" y2="69.4" stroke="var(--warn)"/>
+  <text class="c-annotlab" x="696" y="61.400000000000006" text-anchor="end" fill="var(--warn)">P90 threshold = 1.3772</text>
+  <text class="c-tick" x="138.3" y="288" text-anchor="middle">-0.6</text><text class="c-tick" x="262.2" y="288" text-anchor="middle">-0.3</text><text class="c-tick" x="386.1" y="288" text-anchor="middle">+0.0</text><text class="c-tick" x="510.0" y="288" text-anchor="middle">+0.3</text><text class="c-tick" x="633.9" y="288" text-anchor="middle">+0.6</text>
+  <text class="c-axtitle" x="382" y="304" text-anchor="middle">operating load (mean of the three regime features, scaled)</text>
+  <rect x="510.9" y="314" width="166.8" height="6" rx="3" fill="var(--crit)"/>
+  <line class="c-annot" x1="64" y1="317" x2="504.9" y2="317"/>
+  <text class="c-annotlab" x="700" y="334" text-anchor="end" fill="var(--crit)">validation + test cover only this range</text>
+  <text class="c-annotlab" x="64" y="334">training spans all three regimes &#8594;</text>
+</svg></div>
+          <figcaption>480 windows sampled from 10,468. The three shaded bands are the regime blocks; the red strip marks the load range covered by validation and test. Everything the model is evaluated and calibrated on comes from that strip.</figcaption>
+        </figure>
+      </div>
+      <h4>What it explains</h4>
+      <ul class="plain">
+        <li>The persistent 1.43&#8211;1.61&#215; val/train loss ratio &#8212; a distribution difference read as overfitting.</li>
+        <li>The bimodal training error distribution &#8212; two humps are two regimes, not healthy versus faulty.</li>
+        <li>Why the P90 threshold is effectively a low&#8209;load threshold that no high&#8209;load window will ever cross.</li>
+        <li>Why <code>sensor_baselines.npy</code>, computed on the test split, describes only high&#8209;load behaviour &#8212; while it is the denominator for every error ratio at inference.</li>
+      </ul>
+      <dl class="kv">
+        <dt>Fix</dt>
+        <dd>Carry regime labels through cleaning and stratify the split by regime, or shuffle window order before splitting. Stratifying is the better option: it keeps every regime represented in all three splits and makes regime&#8209;specific thresholds possible later, which the spec already anticipates for &gt;8,000 clean windows.</dd>
+        <dt>Also</dt>
+        <dd><code>construct_windows_with_metadata()</code> exists and preserves per&#8209;window timestamps, but the pipeline calls the plain <code>construct_windows()</code>. Wiring it in would let removed windows be checked against time &#8212; the spec&#8217;s &#8220;removals should not form continuous blocks&#8221; validation, which is currently unenforceable.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="finding" id="f2">
+    <div class="finding-hd">
+      <span class="finding-ref">F2</span>
+      <h3>The demo inference path scales already&#8209;scaled data</h3>
+      <span class="chip chip-crit">blocking</span>
+    </div>
+    <div class="finding-bd">
+      <p>
+        <code>step_clean()</code> scales the dataframe before cutting windows, so every window
+        in <code>cleaned_windows.npy</code> is already in scaled space &#8212; correctly, and the model
+        trains on it that way. But <code>step_infer()</code> passes those same windows to
+        <code>infer_window()</code>, which applies <code>scaler.transform()</code> again.
+      </p>
+      <div class="evidence">525 test windows, same model, same thresholds
+
+<b>without re&#8209;scaling</b>  (matches how the model was trained)
+  score  min 0.0681   mean 0.0891   max 0.1297
+  zones  green 525 &#183; yellow 0 &#183; red 0
+  alert  green &#8212; below persistence thresholds
+
+<b>as main.py runs it</b>  (scaler applied a second time)
+  score  min 3.8370   mean 3.8724   max 3.9272
+  zones  green 0 &#183; yellow 0 &#183; <b>red 525</b>
+  alert  <b>red &#8212; 525 consecutive red windows</b></div>
+      <p>
+        Every score lands above P99, so the summary printed at the end of a pipeline run
+        reports a red alert on healthy synthetic data. The same double transform is on the
+        <code>--infer-only</code> path: the CSV branch scales the frame, builds windows, and then
+        <code>infer_window()</code> scales once more.
+      </p>
+      <dl class="kv">
+        <dt>Fix</dt>
+        <dd>Decide where scaling belongs and do it exactly once. Cleanest is to keep windows in raw units through cleaning and let <code>infer_window()</code> own the transform &#8212; that matches production, where a raw 120&#215;N window arrives from the client. Failing that, add a <code>pre_scaled</code> flag to <code>infer_window()</code> and set it on both internal callers.</dd>
+        <dt>Guard</dt>
+        <dd>A regression test asserting that scoring a training window through the inference path reproduces its stored training error would have caught this, and would catch it again.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="finding" id="f3">
+    <div class="finding-hd">
+      <span class="finding-ref">F3</span>
+      <h3>Regime features silently fell back to three temperature tags</h3>
+      <span class="chip chip-warn">needs a decision</span>
+    </div>
+    <div class="finding-bd">
+      <p>
+        <code>configs/default.yaml</code> asks for regimes to be segmented on
+        <code>speed</code>, <code>power</code> and <code>discharge_pressure</code> &#8212; the load indicators the
+        spec names. The synthetic dataset has none of those columns. <code>main.py</code> filters
+        the list to columns that exist, finds nothing left, and falls back to
+        <code>sensor_columns[:3]</code> &#8212; which is <code>tag_001</code>, <code>tag_002</code>, <code>tag_003</code>,
+        all temperature sensors.
+      </p>
+      <p>
+        On this dataset it happened to work, because the generator drives every sensor group
+        from one shared load signal, so temperature is a clean proxy. On real plant data
+        the first three tags alphabetically will be an arbitrary choice, and a fallback that
+        logs nothing is the kind of thing that is only discovered downstream.
+      </p>
+      <dl class="kv">
+        <dt>Fix</dt>
+        <dd>Log a warning when named regime features are missing, and prefer <code>segment_regimes_unsupervised()</code> &#8212; already implemented and tested, PCA on the full sensor set &#8212; over an alphabetical guess. The spec explicitly recommends exactly that fallback.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">Conformance</span>
+  <h2>Against the spec&#8217;s own acceptance criteria</h2>
+  <div class="t-wrap">
+  <table>
+    <caption>Phase gates &#183; specified vs. observed</caption>
+    <thead><tr><th>Phase</th><th>Criterion</th><th>Observed</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>1 &#183; Data</td><td>&#8805; 2,000 clean windows per unit</td><td class="n">10,468</td><td><span class="chip chip-ok">pass</span></td></tr>
+      <tr><td>1 &#183; Data</td><td>No regime under 10% of clean windows</td><td class="n">37.1% / 26.2% / 36.7%</td><td><span class="chip chip-ok">pass</span></td></tr>
+      <tr><td>1 &#183; Data</td><td>Cleaning audit log complete</td><td>Per&#8209;step, per&#8209;regime, plus 12 plots and an HTML report</td><td><span class="chip chip-ok">pass</span></td></tr>
+      <tr><td>1 &#183; Data</td><td>Transient windows excluded before cleaning</td><td>Implemented and tested; never called</td><td><span class="chip chip-crit">not met</span></td></tr>
+      <tr><td>1 &#183; Data</td><td>Sensor&#8209;dropout filter (&gt;5% nulls) before cleaning</td><td>Exists for inference only, not training</td><td><span class="chip chip-crit">not met</span></td></tr>
+      <tr><td>2 &#183; Model</td><td>Val loss within 1.3&#215; train loss</td><td class="n">1.61&#215; final, 1.44&#215; at best epoch</td><td><span class="chip chip-crit">not met</span></td></tr>
+      <tr><td>2 &#183; Model</td><td>Training error right&#8209;skewed and unimodal</td><td>Bimodal; skew 0.28, kurtosis &#8722;1.52</td><td><span class="chip chip-crit">not met</span></td></tr>
+      <tr><td>2 &#183; Model</td><td>All artefact files saved and versioned</td><td>7 files saved; no version, no equipment ID, no train date</td><td><span class="chip chip-warn">partial</span></td></tr>
+      <tr><td>3 &#183; Inference</td><td>Latency under 5 s per window</td><td class="n">0.40 ms per window on CPU</td><td><span class="chip chip-ok">pass</span></td></tr>
+      <tr><td>3 &#183; Inference</td><td>Single&#8209;window spikes suppressed</td><td>Persistence rules covered by 9 tests</td><td><span class="chip chip-ok">pass</span></td></tr>
+      <tr><td>3 &#183; Inference</td><td>Diagnosis validated on 2 known fault events</td><td>No labelled events available yet</td><td><span class="chip chip-idle">pending data</span></td></tr>
+      <tr><td>3 &#183; Inference</td><td>Monitoring database schema</td><td>Results are printed, not persisted</td><td><span class="chip chip-crit">not met</span></td></tr>
+      <tr><td>4 &#183; Deploy</td><td>Shadow mode, dashboard, calibration</td><td>Not started</td><td><span class="chip chip-idle">not started</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="col">
+    Read that honestly: Phase&#8239;1 and Phase&#8239;3 are substantially there, Phase&#8239;2&#8217;s two
+    statistical gates both fail, and both failures trace back to <a href="#f1">Finding&#8239;1</a>
+    rather than to the model. Fixing the split is the highest&#8209;leverage change available &#8212;
+    it is likely to move both gates at once.
+  </p>
+</section>
+
+<hr class="div"/>
+
+<section id="gaps">
+  <span class="eyebrow">Built but not wired</span>
+  <h2>Working code with no caller</h2>
+  <div class="col">
+    <p class="lede">
+      This is the most striking thing about the current state: a lot of the remaining work
+      is already written and unit&#8209;tested, it simply is not connected to anything. Closing
+      these is integration, not development.
+    </p>
+  </div>
+  <div class="t-wrap">
+  <table>
+    <caption>Implemented, tested, unreachable</caption>
+    <thead><tr><th>Capability</th><th>Module</th><th>Tests</th><th>What is missing</th></tr></thead>
+    <tbody>
+      <tr><td>Transient window removal</td><td><code>data/transient.py</code></td><td class="n">4</td><td>Pipeline step between windowing and cleaning; needs a speed tag and operating range</td></tr>
+      <tr><td>Unsupervised regime fallback</td><td><code>data/regime.py</code></td><td class="n">1</td><td>Should replace the alphabetical fallback in <a href="#f3">F3</a></td></tr>
+      <tr><td>Window timestamps</td><td><code>data/preprocessing.py</code></td><td class="n">1</td><td>Pipeline calls the metadata&#8209;free variant, so time context is lost</td></tr>
+      <tr><td>Hyperparameter grid search</td><td><code>training/hyperparams.py</code></td><td class="n">2</td><td>Imported by <code>main.py</code>, never invoked; no CLI flag</td></tr>
+      <tr><td>Distributed training</td><td><code>training/trainer.py</code></td><td class="n">&#8212;</td><td>Ray <code>TorchTrainer</code> path written; local loop is what runs</td></tr>
+      <tr><td>Ray Data windows</td><td><code>training/dataset.py</code></td><td class="n">&#8212;</td><td>Superseded by the in&#8209;memory NumPy path</td></tr>
+      <tr><td>Elbow threshold calibration</td><td><code>alerting/thresholds.py</code></td><td class="n">5</td><td>Ported from the old notebooks; a natural second opinion on the P90 problem</td></tr>
+      <tr><td>Rolling error trend + KS drift</td><td><code>monitoring/drift.py</code></td><td class="n">8</td><td>Needs a results store to read from</td></tr>
+      <tr><td>Weekly health log</td><td><code>monitoring/health_log.py</code></td><td class="n">6</td><td>Writes JSONL; nothing calls it</td></tr>
+      <tr><td>Retrain triggers</td><td><code>monitoring/retrain_triggers.py</code></td><td class="n">4</td><td>All three spec signals implemented; no scheduler</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="col" style="font-size:.92rem;color:var(--ink-2)">
+    The common blocker for the monitoring package is that inference results are printed to
+    stdout rather than written anywhere. A results table &#8212; timestamp, equipment ID, score,
+    zone, top sensors, regime, quality flag, as the spec sketches &#8212; unlocks drift
+    detection, the weekly log and the retrain triggers together.
+  </p>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">Verification</span>
+  <h2>162 tests, 8.5 seconds, no live model needed</h2>
+  <div class="two">
+    <div>
+      <p>
+        Every stage returns a dataclass from a pure function, which is why the suite runs in
+        under nine seconds without fixtures that need a trained model. Shared fixtures build
+        20&#8209;sensor synthetic windows, including a variant with two injected outlier windows
+        so the cleaning steps can be checked against a known answer.
+      </p>
+      <p>
+        The gap worth naming: coverage is strong per module and thin across module
+        boundaries. Both blocking findings above live in the seams &#8212; in how
+        <code>main.py</code> wires correct pieces together &#8212; which is exactly where there are no
+        tests.
+      </p>
+    </div>
+    <div class="t-wrap">
+    <table>
+      <caption>Tests by area</caption>
+      <thead><tr><th>Area</th><th>Files</th><th>Tests</th></tr></thead>
+      <tbody>
+        <tr><td>Alerting</td><td class="n">3</td><td class="n">30</td></tr>
+        <tr><td>Data</td><td class="n">4</td><td class="n">31</td></tr>
+        <tr><td>Inference</td><td class="n">3</td><td class="n">31</td></tr>
+        <tr><td>Model</td><td class="n">2</td><td class="n">19</td></tr>
+        <tr><td>Monitoring</td><td class="n">3</td><td class="n">18</td></tr>
+        <tr><td>Cleaning</td><td class="n">4</td><td class="n">14</td></tr>
+        <tr><td>Training</td><td class="n">4</td><td class="n">13</td></tr>
+        <tr><td>Artefacts</td><td class="n">1</td><td class="n">4</td></tr>
+        <tr><td>Reporting</td><td class="n">1</td><td class="n">2</td></tr>
+        <tr><td class="tfoot">Total</td><td class="tfoot">25</td><td class="tfoot">162</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">Scaling exploration</span>
+  <h2>What the Ray benchmarks actually said</h2>
+  <div class="col">
+    <p class="lede">
+      <code>test.ipynb</code> is a scratchpad for the distributed question: is Ray worth it
+      here? The honest answer from the numbers so far is not yet, and it is worth writing
+      down why.
+    </p>
+    <p>
+      The benchmark ran 908 SVDs of an 800&#215;800 matrix serially in 45.4 s. The Ray version
+      ran <em>9,008</em> of the same task &#8212; ten times the work &#8212; in 90.4 s on 14 CPUs. That
+      is roughly a 5&#215; effective speed&#8209;up once the workload difference is accounted for,
+      well short of the 14&#215; the core count suggests, because NumPy&#8217;s SVD is already
+      multi&#8209;threaded and the workers end up competing for the same cores.
+    </p>
+    <p>
+      The later cells are more useful as understanding than as measurement: 500 tasks
+      submitted against 14 CPUs, retrieved with <code>ray.wait()</code>, showing the raylet
+      queueing excess work and recycling a fixed pool of worker PIDs in waves. That is the
+      right mental model to have before wiring <code>train_model_distributed()</code> into
+      anything.
+    </p>
+    <p>
+      For this workload the real parallelism opportunity is not one model trained across
+      many cores &#8212; it is many units&#8217; models trained at once. One model per equipment unit
+      is the architecture, so unit&#8209;level parallelism is embarrassingly parallel and needs
+      none of the gradient coordination <code>TorchTrainer</code> provides.
+    </p>
+  </div>
+</section>
+
+<hr class="div"/>
+
+<section>
+  <span class="eyebrow">Next</span>
+  <h2>In this order</h2>
+  <ol class="steps">
+    <li><span class="n">01</span><span class="b"><b>Stratify the split by regime</b> <span>&#8212; carry regime labels out of cleaning and split within each. Then re&#8209;read the val/train ratio and the error distribution shape; both Phase&#8239;2 gates should move together.</span></span></li>
+    <li><span class="n">02</span><span class="b"><b>Scale exactly once</b> <span>&#8212; and add the round&#8209;trip regression test, so a training window scored through the inference path reproduces its stored training error.</span></span></li>
+    <li><span class="n">03</span><span class="b"><b>Re&#8209;calibrate thresholds on the fixed split</b> <span>&#8212; and check whether the Yellow band is still 4.7% wide. If the distribution stays bimodal after the split fix, regime&#8209;stratified thresholds are the answer; the spec already allows them above 8,000 clean windows.</span></span></li>
+    <li><span class="n">04</span><span class="b"><b>Wire the transient filter</b> <span>&#8212; needs a nominated speed tag and its operating range per equipment type. Closes a Phase&#8239;1 criterion with code that already exists.</span></span></li>
+    <li><span class="n">05</span><span class="b"><b>Persist inference results</b> <span>&#8212; the one change that unblocks the entire monitoring package: drift detection, the weekly health log and all three retrain triggers.</span></span></li>
+    <li><span class="n">06</span><span class="b"><b>Complete the artefact bundle</b> <span>&#8212; equipment ID, training date and a version tag in the metadata, so per&#8209;unit models can be told apart.</span></span></li>
+    <li><span class="n">07</span><span class="b"><b>Finish the persistence rules</b> <span>&#8212; the mixed Red+Yellow 2&#8209;hour window and the all&#8209;clear notification, both specified and both currently unreachable.</span></span></li>
+    <li><span class="n">08</span><span class="b"><b>Then move to real data</b> <span>&#8212; the synthetic set has served its purpose. Detection quality cannot be judged until the model runs against a unit with at least one known historical fault event.</span></span></li>
+  </ol>
+</section>
+
+<p class="endnote">
+  Compiled from the repository at <code>Mechademy Project/Autoencoder</code> &#8212; source, config,
+  the three design documents in <code>docs/</code>, the March&#8239;2026 run log and artefacts, and the
+  Ray notebook. Statistics in the findings were reproduced from the saved artefacts, not
+  taken from the run output. All 162 tests pass as of 4&#8239;August&#8239;2026.
+</p>
+
+</div>

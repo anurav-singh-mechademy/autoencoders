@@ -1,0 +1,144 @@
+# Autoencoder Equipment Health Monitoring — Default Configuration
+
+data:
+  frequency_seconds: 15
+  window_rows: 120            # 30 minutes = 120 rows at 15-sec intervals
+  timestamp_column: "datetime"
+
+preprocessing:
+  scaler: "robust"            # RobustScaler: (X - median) / IQR, fit on train split only
+  sensor_dropout:
+    threshold_pct: 5          # Exclude window if >5% of sensors are null/stuck
+
+regime:
+  method: "kmeans"
+  n_clusters: 3               # Low / Medium / High
+  features:                    # Columns used for regime segmentation
+    - "speed"
+    - "power"
+    - "discharge_pressure"
+
+transient:
+  speed_change_threshold_pct: 15   # % of operating range
+
+cleaning:
+  order:
+    - "isolation_forest"
+    - "pca"
+    - "mahalanobis"
+  isolation_forest:
+    contamination: 0.05
+    n_estimators: 200
+    random_state: 42
+  pca:
+    variance_threshold: 0.95   # Retain components explaining 95% variance
+    outlier_std: 3.0           # Flag points > 3 std in PCA space
+  mahalanobis:
+    chi2_percentile: 97.5      # Flag points above 97.5th percentile of chi2 distribution
+  max_removal_pct: 40          # Warn if >40% of data removed overall
+
+model:
+  latent_dim_rule: "max(8, N//8)"
+  encoder_layers: [128, 64, 32]
+  decoder_layers: [32, 64, 128]
+  dropout: 0.2
+  norm: "layer"               # LayerNorm, not BatchNorm -- batches are single autocorrelated windows
+  loss: "mse"
+
+training:
+  optimizer: "adam"
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  lr_scheduler:
+    type: "reduce_on_plateau"
+    factor: 0.5
+    patience: 10
+  max_epochs: 150
+  early_stopping_patience: 15
+  overfit_ratio_threshold: 1.5 # Flag if val/train loss ratio exceeds this
+  batch_size_rows: 256         # shuffled rows across all windows per gradient update --
+                               # deviates from spec's 1-window-per-step recipe, which empirically
+                               # never converges on this data (verified: normalization-independent)
+  splits:
+    train: 0.85
+    val: 0.10
+    test: 0.05
+  seed: 42                     # null = unseeded (legacy behaviour); set for reproducible training runs
+
+thresholds:
+  green_yellow: 90             # P90 of calibration error distribution
+  yellow_red: 99               # P99 of calibration error distribution
+  method: "robust"             # "robust" (default) or "percentile". Robust computes
+                                # median + z*(1.4826*MAD) on log(score) -- z is the standard-
+                                # normal quantile for the target percentile (~1.28 for P90,
+                                # ~2.33 for P99), so it targets the same percentile a plain
+                                # np.percentile call would, but reads it off the bulk of the
+                                # distribution (median + spread) instead of the tail itself,
+                                # which is a much smaller, noisier sample. "percentile" falls
+                                # back to the plain empirical np.percentile behaviour.
+  spread: "mad"                # "mad" (default) or "iqr" -- which robust spread estimator
+                                # method="robust" uses. Both target the same percentile; MAD
+                                # is the more standard choice, IQR is the Tukey/quartile form.
+  calibration_source: "val"    # "val" (recommended) or "train". Ablation study
+                                # (output_ablation_full_seeded/, 3 seeds) showed
+                                # val-calibration raises Red F1 0.884->0.916 and
+                                # any-flag precision 0.336->0.529 at ~0 recall cost --
+                                # train-error calibration is optimistic since those
+                                # are exactly the windows the model fit well.
+  score_aggregation: "p95"     # 95th percentile of 120 per-row errors
+
+alerting:
+  persistence:
+    red_to_yellow_alert: 2     # 2 consecutive Red → Yellow alert
+    red_to_red_alert: 3        # 3+ consecutive Red → Red alert
+    yellow_consecutive: 4      # 4+ consecutive Yellow → Yellow alert
+    mixed_window_hours: 2      # Mixed Red+Yellow within 2 hours → Yellow alert
+
+inference:
+  missing_data:
+    max_consecutive_nulls_ffill: 3
+    max_null_pct_per_sensor: 5
+  sensor_flag_threshold: 3.0        # error ratio above which sensor is flagged
+  anomaly_sensor_pct: 10.0          # % of flagged sensors to declare anomalous
+  running_sensor_column: null       # sensor name/index for running detection (null = skip)
+  running_threshold: 0.0            # min value for "running"
+  attribution_method: "heuristic"   # "heuristic" (default), "integrated_gradients", or (if
+                                     # explainability.enabled below) "fastshap" is used automatically
+                                     # when a trained explainer is available. Integrated Gradients is
+                                     # training-free -- unlike FastSHAP, needs no explainability.enabled
+                                     # step, just this flag at inference time.
+  integrated_gradients:
+    n_steps: 50                     # Riemann-sum steps along the baseline->input path (accuracy vs. cost)
+    baseline: 0.0                   # reference value sensors are interpolated from (RobustScaler median)
+
+explainability:
+  enabled: false                # opt-in: train + use a FastSHAP explainer for sensor attribution.
+                                 # When false (default), diagnosis falls back to the existing raw
+                                 # per-sensor MSE-share heuristic -- nothing else changes.
+  hidden_dim: 128
+  dropout: 0.1
+  learning_rate: 0.001
+  weight_decay: 0.0             # 0, unlike the AE's -- L2 regularization here actively fights
+                                 # against the input-sensitivity FastSHAP needs to learn; verified
+                                 # empirically to reduce first-layer weights toward numerical zero
+  max_epochs: 100
+  early_stopping_patience: 10
+  lr_scheduler:
+    factor: 0.5
+    patience: 5
+  n_mask_samples: 32             # paired subsets sampled per training step (must be even)
+  batch_size: 256
+  seed: 42                       # null = unseeded
+
+monitoring:
+  rolling_error_window_days: 7
+  drift_weeks_threshold: 6
+  false_alarm_rate_multiplier: 2.0
+  sensor_dropout_hours: 48
+  ks_test_significance: 0.01
+  ks_test_min_sensors: 5
+
+reporting:
+  format: "html"               # html or pdf
+  include_plots: true
+  sensor_pairs_to_plot: 10
