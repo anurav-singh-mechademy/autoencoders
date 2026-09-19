@@ -49,13 +49,19 @@ class CleaningPipelineResult:
     cleaned_regime_labels: list[int]
     original_count: int
     cleaned_count: int
+    # Raw-file window id (position in the original construct_windows_with_metadata
+    # ordering) of each surviving window, same order as cleaned_windows -- only
+    # populated when `window_ids` is passed to run_cleaning_pipeline(). Lets a
+    # caller (main.py) know exactly which raw windows made it into train/val/test,
+    # e.g. to restrict evaluation to the test split or report ground-truth
+    # coverage per split.
+    cleaned_window_ids: list[int] = field(default_factory=list)
     # Windows removed by isolation_forest/pca/mahalanobis (NOT the sensor-dropout
     # filter upstream of this pipeline, which runs on possibly-null-containing
     # windows -- these are always full, valid numeric arrays). Kept out of
-    # autoencoder training as designed, but useful elsewhere as real examples of
-    # sensor-level deviation -- e.g. FastSHAP's explainer training set, which
-    # otherwise only ever sees close-to-median "normal" rows and has nothing to
-    # learn row-specific attribution from (see explain/fastshap.py).
+    # autoencoder training as designed, but retained here as an audit trail --
+    # real examples of sensor-level deviation an engineer can inspect to sanity
+    # check what each detector actually flagged.
     rejected_windows: list[np.ndarray] = field(default_factory=list)
     step_logs: list[CleaningStepLog] = field(default_factory=list)
     per_step_removals: dict[str, int] = field(default_factory=dict)
@@ -75,6 +81,7 @@ def run_cleaning_pipeline(
     windows: list[np.ndarray],
     regime_result: RegimeResult,
     sensor_columns: list[str],
+    window_ids: Optional[list[int]] = None,
     output_dir: Optional[str | Path] = None,
     # Isolation Forest params
     if_contamination: float = 0.05,
@@ -107,6 +114,9 @@ def run_cleaning_pipeline(
         windows: All windows after transient removal.
         regime_result: Result of regime segmentation (labels per window).
         sensor_columns: Sensor column names for validation plots.
+        window_ids: Optional raw-file window id per window (same order as
+            `windows`). When given, `cleaned_window_ids` on the result tracks
+            which ids survive cleaning, in lockstep with `cleaned_windows`.
         output_dir: Directory to save validation plots. If None, skips validation plots.
         if_contamination: Isolation Forest contamination parameter.
         if_n_estimators: Isolation Forest number of trees.
@@ -130,6 +140,7 @@ def run_cleaning_pipeline(
     original_count = len(windows)
     all_cleaned: list[np.ndarray] = []
     all_cleaned_regimes: list[int] = []
+    all_cleaned_ids: list[int] = []
     all_rejected: list[np.ndarray] = []
     step_logs: list[CleaningStepLog] = []
     per_step_removals: dict[str, int] = {
@@ -146,6 +157,7 @@ def run_cleaning_pipeline(
         regime_name = regime_result.regime_names[regime_idx]
         regime_mask = regime_result.labels == regime_idx
         regime_windows = [w for w, m in zip(windows, regime_mask) if m]
+        regime_ids = [i for i, m in zip(window_ids, regime_mask) if m] if window_ids is not None else None
 
         if len(regime_windows) < 10:
             logger.warning(
@@ -154,11 +166,14 @@ def run_cleaning_pipeline(
             )
             all_cleaned.extend(regime_windows)
             all_cleaned_regimes.extend([regime_idx] * len(regime_windows))
+            if regime_ids is not None:
+                all_cleaned_ids.extend(regime_ids)
             per_regime[regime_name] = {"original": len(regime_windows), "cleaned": len(regime_windows)}
             continue
 
         logger.info("Cleaning regime '%s' (%d windows)...", regime_name, len(regime_windows))
         current = regime_windows
+        current_ids = regime_ids
 
         for step_name in steps:
             if len(current) < 10:
@@ -175,6 +190,8 @@ def run_cleaning_pipeline(
                 )
                 before = len(current)
                 all_rejected.extend(w for w, is_out in zip(current, if_result.is_outlier) if is_out)
+                if current_ids is not None:
+                    current_ids = [i for i, is_out in zip(current_ids, if_result.is_outlier) if not is_out]
                 current = apply_isolation_forest(current, if_result)
                 removed = before - len(current)
                 per_step_removals["isolation_forest"] += removed
@@ -188,6 +205,8 @@ def run_cleaning_pipeline(
                 )
                 before = len(current)
                 all_rejected.extend(w for w, is_out in zip(current, pca_result.is_outlier) if is_out)
+                if current_ids is not None:
+                    current_ids = [i for i, is_out in zip(current_ids, pca_result.is_outlier) if not is_out]
                 current = apply_pca_cleaning(current, pca_result)
                 removed = before - len(current)
                 per_step_removals["pca"] += removed
@@ -200,6 +219,8 @@ def run_cleaning_pipeline(
                 )
                 before = len(current)
                 all_rejected.extend(w for w, is_out in zip(current, md_result.is_outlier) if is_out)
+                if current_ids is not None:
+                    current_ids = [i for i, is_out in zip(current_ids, md_result.is_outlier) if not is_out]
                 current = apply_mahalanobis_cleaning(current, md_result)
                 removed = before - len(current)
                 per_step_removals["mahalanobis"] += removed
@@ -208,6 +229,8 @@ def run_cleaning_pipeline(
 
         all_cleaned.extend(current)
         all_cleaned_regimes.extend([regime_idx] * len(current))
+        if current_ids is not None:
+            all_cleaned_ids.extend(current_ids)
         per_regime[regime_name] = {"original": len(regime_windows), "cleaned": len(current)}
 
     # Validation
@@ -232,6 +255,7 @@ def run_cleaning_pipeline(
     return CleaningPipelineResult(
         cleaned_windows=all_cleaned,
         cleaned_regime_labels=all_cleaned_regimes,
+        cleaned_window_ids=all_cleaned_ids,
         original_count=original_count,
         cleaned_count=len(all_cleaned),
         rejected_windows=all_rejected,

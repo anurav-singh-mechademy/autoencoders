@@ -6,7 +6,6 @@ import pytest
 from sklearn.preprocessing import RobustScaler
 
 from autoencoder.model.architecture import Autoencoder
-from autoencoder.explain.fastshap import FastSHAPExplainer
 from autoencoder.inference.pipeline import infer_window, is_equipment_running
 
 
@@ -51,13 +50,52 @@ class TestInferWindow:
         assert result.usable
         assert not np.isnan(result.window_score)
 
-    def test_window_with_too_many_nulls(self, trained_model, fitted_scaler):
+    def test_window_with_one_bad_sensor_is_masked_not_rejected(self, trained_model, fitted_scaler):
+        # 1/20 = 5% of sensors null-dominant, below the default 30% window
+        # threshold -- still usable, with that sensor excluded from scoring.
         window = np.random.rand(120, 20).astype(np.float32)
-        window[:50, 0] = np.nan  # 50 consecutive nulls
+        window[:50, 0] = np.nan  # 50 consecutive nulls in sensor 0
+        result = infer_window(window, trained_model, fitted_scaler)
+        assert result.usable
+        assert not np.isnan(result.window_score)
+        assert result.masked_sensors == [0]
+        assert all(c["index"] != 0 for c in result.top_contributors)
+
+    def test_window_with_too_many_bad_sensors_not_usable(self, trained_model, fitted_scaler):
+        # 10/20 = 50% of sensors null-dominant, above the default 30% window
+        # threshold -- the whole window is rejected.
+        window = np.random.rand(120, 20).astype(np.float32)
+        for col in range(10):
+            window[:50, col] = np.nan
         result = infer_window(window, trained_model, fitted_scaler)
         assert not result.usable
         assert np.isnan(result.window_score)
         assert len(result.quality_flags) > 0
+        assert result.masked_sensors == list(range(10))
+
+
+class TestTailCompressionScale:
+    def test_extreme_value_scored_differently_with_compression(self, trained_model, fitted_scaler):
+        # A window with one extreme outlier produces a huge raw z-score
+        # after scaler.transform(); tail_compression_scale must actually be
+        # applied (not silently ignored) for already_scaled=False callers,
+        # or thresholds calibrated under compression get compared against
+        # uncompressed scores.
+        window = np.random.rand(120, 20).astype(np.float32)
+        window[0, 0] = 1e6  # extreme glitch value
+
+        uncompressed = infer_window(window, trained_model, fitted_scaler, tail_compression_scale=None)
+        compressed = infer_window(window, trained_model, fitted_scaler, tail_compression_scale=20.0)
+
+        assert uncompressed.usable and compressed.usable
+        assert uncompressed.window_score != compressed.window_score
+
+    def test_ignored_when_already_scaled(self, trained_model, fitted_scaler):
+        window = np.random.rand(120, 20).astype(np.float32)
+        already_scaled = infer_window(window, trained_model, fitted_scaler, already_scaled=True, tail_compression_scale=20.0)
+        already_scaled_no_compression = infer_window(window, trained_model, fitted_scaler, already_scaled=True, tail_compression_scale=None)
+        # already_scaled=True skips scaling entirely, so tail_compression_scale must have no effect.
+        assert already_scaled.window_score == already_scaled_no_compression.window_score
 
 
 class TestEquipmentRunningFilter:
@@ -118,47 +156,19 @@ class TestWithSensorBaselines:
             sensor_baselines=baselines,
         )
         assert result.usable
+        assert result.error_ratios is not None
+        assert result.error_ratios.shape == (20,)
         assert result.sensor_flags is not None
+        # sensor_flags is exactly (error_ratios > flag_threshold) -- the
+        # binary flag is derived from the continuous ratio, not independent.
+        np.testing.assert_array_equal(result.sensor_flags, (result.error_ratios > 3.0).astype(int))
         assert result.pct_flagged_sensors is not None
         assert result.sensors_anomalous is not None
 
     def test_no_baselines_no_flags(self, trained_model, fitted_scaler):
         window = np.random.rand(120, 20).astype(np.float32)
         result = infer_window(window, trained_model, fitted_scaler)
+        assert result.error_ratios is None
         assert result.sensor_flags is None
         assert result.pct_flagged_sensors is None
         assert result.sensors_anomalous is None
-
-
-class TestWithExplainer:
-    def test_attribution_values_populated(self, trained_model, fitted_scaler):
-        explainer = FastSHAPExplainer(n_sensors=20, hidden_dim=16)
-        explainer.eval()
-        window = np.random.rand(120, 20).astype(np.float32)
-        result = infer_window(window, trained_model, fitted_scaler, explainer=explainer)
-        assert result.usable
-        assert result.attribution_method == "fastshap"
-        assert result.attribution_values is not None
-        assert result.attribution_values.shape == (20,)
-
-    def test_no_explainer_defaults_to_heuristic(self, trained_model, fitted_scaler):
-        window = np.random.rand(120, 20).astype(np.float32)
-        result = infer_window(window, trained_model, fitted_scaler)
-        assert result.attribution_method == "heuristic"
-        assert result.attribution_values is None
-
-
-class TestWithIntegratedGradients:
-    def test_attribution_values_populated(self, trained_model, fitted_scaler):
-        window = np.random.rand(120, 20).astype(np.float32)
-        result = infer_window(window, trained_model, fitted_scaler, use_integrated_gradients=True, ig_n_steps=10)
-        assert result.usable
-        assert result.attribution_method == "integrated_gradients"
-        assert result.attribution_values is not None
-        assert result.attribution_values.shape == (20,)
-
-    def test_explainer_and_ig_together_raises(self, trained_model, fitted_scaler):
-        explainer = FastSHAPExplainer(n_sensors=20, hidden_dim=16)
-        window = np.random.rand(120, 20).astype(np.float32)
-        with pytest.raises(ValueError):
-            infer_window(window, trained_model, fitted_scaler, explainer=explainer, use_integrated_gradients=True)

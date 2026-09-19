@@ -7,8 +7,48 @@ data:
 
 preprocessing:
   scaler: "robust"            # RobustScaler: (X - median) / IQR, fit on train split only
+  variance_threshold: 1e-5    # Drop a sensor column outright if its variance across the WHOLE
+                               # file is at or below this -- catches truly constant columns
+                               # (booleans, decommissioned tags stuck at one value forever).
+  max_null_pct: 50             # Drop a sensor column outright if it's null in more than this % of
+                               # the file's fixed-size windows -- catches a sensor that's missing
+                               # most of the time but has a few genuine excursions spread across a
+                               # long series, which is enough to look healthy to variance_threshold
+                               # above despite being useless at the window granularity the model
+                               # actually trains on. See remove_null_or_stuck_columns()'s docstring.
+  max_stuck_pct: 100           # Drop a sensor column if it's flat ("stuck") in more than this % of
+                               # windows. Default 100 means this never fires -- a stuck/flat sensor
+                               # is frequently real signal (deadband logging, genuine steady state),
+                               # not a fault, so we train on it as-is; sensor_dropout.py likewise
+                               # only excludes a WINDOW for null sensors, never stuck ones. Lower
+                               # this explicitly if you do want to cull frequently-stuck sensors.
+  tail_compression_scale: 20   # c*asinh(z/c) applied to the RobustScaler output instead of leaving
+                               # it as a plain linear z-score -- ON by default: real historian data
+                               # routinely has IQR-degenerate tags (near-constant bulk + rare
+                               # extreme/glitch readings, often correlated across many tags at
+                               # once) that otherwise blow up the loss under plain (x-median)/IQR
+                               # scaling (verified: a single such glitch produced a train loss in
+                               # the millions on one equipment). c=20 is the standard value already
+                               # used across 34/40/62/130_data.yaml. See apply_scaling()'s
+                               # docstring in src/autoencoder/data/preprocessing.py for the full
+                               # rationale. Set null to disable if an equipment's sensors are
+                               # already well-behaved.
   sensor_dropout:
-    threshold_pct: 5          # Exclude window if >5% of sensors are null/stuck
+    threshold_pct: 5          # Exclude window if >5% of sensors are null (stuck/flat sensors no
+                               # longer count -- see sensor_dropout.py's module docstring)
+  restrict_to_event_sensors: false  # If true, restrict sensor columns to only those implicated by
+                               # >=1 labeled event node (all of them, not just one split -- see
+                               # autoencoder.evaluation.ground_truth.restrict_to_event_sensors).
+                               # Requires --event-labels.
+  restrict_to_event_sensors_stage: "pre_split"  # "pre_split" (default) narrows sensor_columns
+                               # immediately; "post_split" lets regime segmentation and the split
+                               # see every sensor first, narrowing only afterwards (avoids
+                               # confounding "regime" with "anomaly" when few sensors remain).
+  exclude_event_touched_windows: false  # If true, drop train/val windows touched by >=1 labeled
+                               # event node -- an alternative/complement to the statistical
+                               # detectors under `cleaning:` for defining "not normal". Requires
+                               # an n_active_nodes column. Test is never touched. See
+                               # autoencoder.data.preprocessing.compute_event_touched_windows.
 
 regime:
   method: "kmeans"
@@ -38,44 +78,92 @@ cleaning:
   max_removal_pct: 40          # Warn if >40% of data removed overall
 
 model:
-  latent_dim_rule: "max(8, N//8)"
-  encoder_layers: [128, 64, 32]
-  decoder_layers: [32, 64, 128]
+  # latent_dim is picked automatically via PCA on the scaled training data
+  # (architecture.pick_latent_dim) -- the number of components needed to
+  # explain latent_variance_threshold of variance, floored at
+  # latent_dim_floor. Hidden-layer widths then follow from that (see
+  # architecture.compute_hidden_widths): n_sensors is halved repeatedly
+  # until reaching latent_dim, so the funnel's depth scales with the actual
+  # gap between input size and the data-driven bottleneck size, rather than
+  # a fixed number of hardcoded layer sizes. Set latent_dim explicitly here
+  # (an integer) to bypass PCA and force a specific value instead.
+  latent_variance_threshold: 0.95
+  latent_dim_floor: 4
+  max_hidden_layers: 3        # caps encoder/decoder depth regardless of the n_sensors/latent_dim gap --
+                               # verified a 7-hidden-layer network (476 sensors -> latent=4) got stuck in
+                               # a stable bad plateau immediately after epoch 1, unmoved by 46 epochs and
+                               # two LR reductions; a shallower network with a larger final compression
+                               # step is far more reliably trainable with plain Adam.
   dropout: 0.2
   norm: "layer"               # LayerNorm, not BatchNorm -- batches are single autocorrelated windows
   loss: "mse"
 
 training:
+  min_train_days: 182.5        # ~6 months -- training aborts (before any model fitting) if the
+                               # train split ends up with less than this much data, computed as
+                               # n_train_windows * window_rows * frequency_seconds. A model trained
+                               # on too short a history hasn't seen enough of the equipment's real
+                               # operating envelope to have a trustworthy notion of "normal".
   optimizer: "adam"
   learning_rate: 0.001
-  weight_decay: 0.00001
+  weight_decay: 0.0003        # Raised from 1e-5 -- that was too weak to keep val loss from
+                               # diverging while train loss kept improving (observed val/train
+                               # ratios of 2-12x at the best-restored epoch across real runs).
+                               # 3e-4 is a standard stronger-but-not-crushing L2 starting point;
+                               # tune per-dataset if the overfit_ratio_threshold warning persists.
   lr_scheduler:
     type: "reduce_on_plateau"
     factor: 0.5
     patience: 10
   max_epochs: 150
-  early_stopping_patience: 15
+  # early_stopping_patience is picked automatically as
+  # lr_scheduler.patience + patience_per_hidden_layer * (n_hidden_layers + 1)
+  # -- reaching a small latent_dim from a wide n_sensors takes many halvings
+  # (compute_hidden_widths), so deeper architectures get proportionally more
+  # epochs to find a good basin before giving up, and patience always stays
+  # above lr_patience so ReduceLROnPlateau gets a chance to act first (a
+  # flat patience <= lr_patience would let early stopping fire before the LR
+  # ever reduces, silently disabling the scheduler -- verified this was
+  # happening at patience=5/lr_patience=10 for every config). Set
+  # early_stopping_patience explicitly here (an integer) to bypass this and
+  # force a specific value instead.
+  patience_per_hidden_layer: 2  # extra patience per layer beyond lr_patience -- kept modest now that
+                               # depth is capped (see max_hidden_layers below); more patience alone
+                               # was verified not to help an uncapped-depth network converge further
   overfit_ratio_threshold: 1.5 # Flag if val/train loss ratio exceeds this
   batch_size_rows: 256         # shuffled rows across all windows per gradient update --
                                # deviates from spec's 1-window-per-step recipe, which empirically
                                # never converges on this data (verified: normalization-independent)
   splits:
-    train: 0.85
-    val: 0.10
-    test: 0.05
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  split_stratify_by: "regime"  # "regime" (default, by segment_regimes) or "month" -- both slice
+                               # train/val/test chronologically WITHIN each group, so "month" gives
+                               # every split a proportional share of every month instead of one
+                               # contiguous chronological range per regime.
   seed: 42                     # null = unseeded (legacy behaviour); set for reproducible training runs
 
 thresholds:
   green_yellow: 90             # P90 of calibration error distribution
   yellow_red: 99               # P99 of calibration error distribution
-  method: "robust"             # "robust" (default) or "percentile". Robust computes
-                                # median + z*(1.4826*MAD) on log(score) -- z is the standard-
-                                # normal quantile for the target percentile (~1.28 for P90,
-                                # ~2.33 for P99), so it targets the same percentile a plain
-                                # np.percentile call would, but reads it off the bulk of the
-                                # distribution (median + spread) instead of the tail itself,
-                                # which is a much smaller, noisier sample. "percentile" falls
-                                # back to the plain empirical np.percentile behaviour.
+  method: "gpd_tail"           # "gpd_tail" (default), "robust", or "percentile". Calibration
+                                # errors are frequently a MIXTURE -- a well-behaved bulk plus a
+                                # real, separate cluster of severe-error windows that survived
+                                # upstream cleaning (cleaning's detectors don't share the trained
+                                # model's own notion of anomalous) -- verified on real data: val
+                                # P90=0.89 but P99=300, a ~340x jump no unimodal fit should
+                                # produce. "robust" (median+MAD) is blind to that cluster by
+                                # design and badly underestimates yellow_red as a result. "gpd_tail"
+                                # keeps green_yellow as a plain P90 percentile (bulk methods agree
+                                # there) and fits yellow_red from a Generalized Pareto tail model
+                                # over the exceedances above it -- the extreme-value-theory answer
+                                # to "don't trust the bulk to extrapolate, but do use all the tail
+                                # data you have" (see thresholds.py's module docstring). Falls back
+                                # to "robust" if too few exceedances for a stable GPD fit. Plain
+                                # "percentile" (P90/P99 read directly off the sample) is a cheaper
+                                # alternative that also sees the tail correctly, but P99 is a
+                                # single high-variance order statistic.
   spread: "mad"                # "mad" (default) or "iqr" -- which robust spread estimator
                                 # method="robust" uses. Both target the same percentile; MAD
                                 # is the more standard choice, IQR is the Tukey/quartile form.
@@ -97,38 +185,20 @@ alerting:
 inference:
   missing_data:
     max_consecutive_nulls_ffill: 3
-    max_null_pct_per_sensor: 5
+    max_null_pct_per_sensor: 5   # per-sensor: raw null % within a window above which
+                                 # that sensor is masked out of scoring (see
+                                 # max_null_dominant_sensor_pct for the window-level
+                                 # accept/reject decision)
+    max_null_dominant_sensor_pct: 5  # window-level: % of ALL sensors allowed to be
+                                 # null-dominant before the whole window is rejected
+                                 # instead of scored with those sensors masked. Matches
+                                 # preprocessing.sensor_dropout.threshold_pct above --
+                                 # same "how much simultaneous sensor unreliability is
+                                 # still a valid window" bar used at training time.
   sensor_flag_threshold: 3.0        # error ratio above which sensor is flagged
   anomaly_sensor_pct: 10.0          # % of flagged sensors to declare anomalous
   running_sensor_column: null       # sensor name/index for running detection (null = skip)
   running_threshold: 0.0            # min value for "running"
-  attribution_method: "heuristic"   # "heuristic" (default), "integrated_gradients", or (if
-                                     # explainability.enabled below) "fastshap" is used automatically
-                                     # when a trained explainer is available. Integrated Gradients is
-                                     # training-free -- unlike FastSHAP, needs no explainability.enabled
-                                     # step, just this flag at inference time.
-  integrated_gradients:
-    n_steps: 50                     # Riemann-sum steps along the baseline->input path (accuracy vs. cost)
-    baseline: 0.0                   # reference value sensors are interpolated from (RobustScaler median)
-
-explainability:
-  enabled: false                # opt-in: train + use a FastSHAP explainer for sensor attribution.
-                                 # When false (default), diagnosis falls back to the existing raw
-                                 # per-sensor MSE-share heuristic -- nothing else changes.
-  hidden_dim: 128
-  dropout: 0.1
-  learning_rate: 0.001
-  weight_decay: 0.0             # 0, unlike the AE's -- L2 regularization here actively fights
-                                 # against the input-sensitivity FastSHAP needs to learn; verified
-                                 # empirically to reduce first-layer weights toward numerical zero
-  max_epochs: 100
-  early_stopping_patience: 10
-  lr_scheduler:
-    factor: 0.5
-    patience: 5
-  n_mask_samples: 32             # paired subsets sampled per training step (must be even)
-  batch_size: 256
-  seed: 42                       # null = unseeded
 
 monitoring:
   rolling_error_window_days: 7

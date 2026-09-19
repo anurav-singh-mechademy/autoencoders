@@ -108,6 +108,62 @@ class TestComputeThresholdsRobust:
             compute_thresholds(errors, method="robust", spread="not_a_real_spread")
 
 
+class TestComputeThresholdsGPDTail:
+    """Mirrors the real failure mode found in production: a well-behaved
+    bulk plus a small, genuine cluster of severe-error windows that
+    upstream cleaning didn't remove. 'robust' (median+MAD) is blind to that
+    cluster and underestimates yellow_red; 'gpd_tail' should track the true
+    tail far more closely."""
+
+    @staticmethod
+    def _mixture(rng, n_bulk=2000, n_severe=30, bulk_scale=1.0, severe_scale=50.0):
+        bulk = rng.lognormal(mean=-1.0, sigma=0.3, size=n_bulk) * bulk_scale
+        severe = rng.lognormal(mean=2.0, sigma=0.5, size=n_severe) * severe_scale
+        return np.concatenate([bulk, severe])
+
+    def test_green_yellow_matches_plain_percentile(self):
+        rng = np.random.default_rng(0)
+        errors = self._mixture(rng)
+        t = compute_thresholds(errors, method="gpd_tail")
+        assert t["green_yellow"] == pytest.approx(np.percentile(errors, 90))
+
+    def test_tracks_true_tail_better_than_robust(self):
+        rng = np.random.default_rng(1)
+        errors = self._mixture(rng, n_bulk=5000, n_severe=100)
+        true_p99 = np.percentile(errors, 99)
+
+        t_robust = compute_thresholds(errors, method="robust")
+        t_gpd = compute_thresholds(errors, method="gpd_tail")
+
+        # robust, blind to the severe cluster, badly underestimates P99;
+        # gpd_tail, fit from the actual exceedances, lands far closer to it.
+        assert t_robust["yellow_red"] < true_p99 / 2
+        assert abs(t_gpd["yellow_red"] - true_p99) < abs(t_robust["yellow_red"] - true_p99)
+
+    def test_ordered(self):
+        rng = np.random.default_rng(2)
+        errors = self._mixture(rng)
+        t = compute_thresholds(errors, method="gpd_tail")
+        assert t["green_yellow"] < t["yellow_red"]
+
+    def test_falls_back_to_robust_with_too_few_exceedances(self, caplog):
+        rng = np.random.default_rng(3)
+        errors = rng.lognormal(mean=-1.0, sigma=0.3, size=50)  # only ~5 points above P90
+        t_gpd = compute_thresholds(errors, method="gpd_tail", min_gpd_exceedances=20)
+        log_errors = np.log(np.maximum(errors, np.finfo(np.float64).tiny))
+        from autoencoder.alerting.thresholds import _robust_log_threshold
+        expected_fallback = float(np.exp(_robust_log_threshold(log_errors, 99, "mad")))
+        assert t_gpd["yellow_red"] == pytest.approx(expected_fallback)
+        assert "falling back to 'robust'" in caplog.text
+
+    def test_method_label(self):
+        rng = np.random.default_rng(4)
+        errors = self._mixture(rng)
+        t = compute_thresholds(errors, method="gpd_tail")
+        assert t["method"] == "gpd_tail"
+        assert t["spread"] == "mad"
+
+
 class TestComputeAnomolyCurve:
     def test_decreasing(self):
         """Anomaly % should decrease as threshold increases."""

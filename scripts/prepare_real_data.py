@@ -26,6 +26,7 @@ Usage:
 import argparse
 import logging
 
+import numpy as np
 import pandas as pd
 
 from autoencoder.logging_config import setup_logging
@@ -40,6 +41,26 @@ def prepare_real_data(
     max_null_pct: float = 50.0,
 ) -> pd.DataFrame:
     sensor_cols = [c for c in df.columns if c != timestamp_column]
+
+    # Historian exports can contain literal +/-inf (e.g. a derived ratio tag
+    # whose reference value hit zero) -- pandas' isnull() doesn't count inf
+    # as missing, so it sails through null-pct filtering and ffill/bfill
+    # untouched, then crashes RobustScaler.fit downstream with "infinity or
+    # a value too large for dtype". Treat it as missing, same as NaN, before
+    # anything else runs.
+    numeric_cols = df[sensor_cols].select_dtypes(include=[np.number]).columns.tolist()
+    if numeric_cols:
+        inf_mask = np.isinf(df[numeric_cols].to_numpy())
+        n_inf = int(inf_mask.sum())
+        if n_inf:
+            df = df.copy()
+            df[numeric_cols] = df[numeric_cols].mask(pd.DataFrame(inf_mask, columns=numeric_cols, index=df.index), np.nan)
+            affected = [c for c, bad in zip(numeric_cols, inf_mask.any(axis=0)) if bad]
+            logger.warning(
+                "Replaced %d +/-inf value(s) across %d column(s) with NaN before null/fill handling: %s",
+                n_inf, len(affected), affected,
+            )
+
     null_pct = df[sensor_cols].isnull().mean() * 100
 
     dropped = null_pct[null_pct > max_null_pct].index.tolist()
@@ -76,14 +97,17 @@ def main():
                          help="Drop columns with more than this %% missing (default 50).")
     args = parser.parse_args()
 
-    df = pd.read_csv(args.input)
+    df = pd.read_parquet(args.input) if args.input.endswith(".parquet") else pd.read_csv(args.input)
     df[args.timestamp_column] = pd.to_datetime(df[args.timestamp_column])
     df = df.sort_values(args.timestamp_column).reset_index(drop=True)
 
     logger.info("Loaded %d rows, %d columns from %s", len(df), len(df.columns), args.input)
 
     cleaned = prepare_real_data(df, timestamp_column=args.timestamp_column, max_null_pct=args.max_null_pct)
-    cleaned.to_csv(args.output, index=False)
+    if args.output.endswith(".parquet"):
+        cleaned.to_parquet(args.output, index=False)
+    else:
+        cleaned.to_csv(args.output, index=False)
     logger.info("Wrote %d rows, %d columns to %s", len(cleaned), len(cleaned.columns), args.output)
 
 

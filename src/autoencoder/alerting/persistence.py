@@ -2,6 +2,65 @@
 
 from __future__ import annotations
 
+from collections import deque
+
+
+def compute_alert_level_timeline(
+    zones: list[str],
+    red_to_yellow_alert: int = 2,
+    red_to_red_alert: int = 3,
+    yellow_consecutive: int = 4,
+    mixed_window_hours: float | None = None,
+    window_minutes: float = 30,
+) -> list[str]:
+    """Streaming per-window alert level over a full zone timeline -- the
+    same rules as apply_persistence(), applied incrementally at each step
+    instead of re-scanning full history per window (O(n) total for an
+    O(lookback) per-step cost instead of O(n) per call).
+
+    Returns one alert level ("green"/"yellow"/"red") per input zone.
+    """
+    lookback_windows = None
+    trailing_span: deque = deque(maxlen=0)
+    if mixed_window_hours is not None and mixed_window_hours > 0:
+        lookback_windows = max(1, round(mixed_window_hours * 60 / window_minutes))
+        trailing_span = deque(maxlen=lookback_windows)
+
+    consecutive_red = 0
+    consecutive_yellow = 0
+    levels = []
+    for zone in zones:
+        if zone == "red":
+            consecutive_red += 1
+            consecutive_yellow = 0
+        elif zone == "yellow":
+            consecutive_yellow += 1
+            consecutive_red = 0
+        else:
+            consecutive_red = 0
+            consecutive_yellow = 0
+
+        if lookback_windows is not None:
+            trailing_span.append(zone)
+            mixed_red_count = sum(1 for z in trailing_span if z == "red")
+            mixed_yellow_count = sum(1 for z in trailing_span if z == "yellow")
+        else:
+            mixed_red_count = mixed_yellow_count = 0
+
+        if consecutive_red >= red_to_red_alert:
+            level = "red"
+        elif consecutive_red >= red_to_yellow_alert:
+            level = "yellow"
+        elif consecutive_yellow >= yellow_consecutive:
+            level = "yellow"
+        elif mixed_red_count >= 1 and mixed_yellow_count >= 1 and (2 * mixed_red_count + mixed_yellow_count) >= 4:
+            level = "yellow"
+        else:
+            level = "green"
+        levels.append(level)
+
+    return levels
+
 
 def apply_persistence(
     zone_history: list[str],

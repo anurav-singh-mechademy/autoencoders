@@ -16,10 +16,11 @@ def diagnose_window(
     sensor_baselines: np.ndarray | None = None,
     flag_threshold: float = 3.0,
     anomaly_sensor_pct: float = 10.0,
-    attribution_values: np.ndarray | None = None,
-    attribution_method: str = "heuristic",
+    masked_sensors: list[int] | None = None,
 ) -> dict:
     """Diagnose which sensors are contributing most to reconstruction error.
+
+    Ranks sensors by their share of total per-sensor MSE reconstruction error.
 
     Args:
         x: Original window, shape (n_rows, n_sensors).
@@ -30,28 +31,17 @@ def diagnose_window(
             When provided, computes normalized error ratios and binary flags.
         flag_threshold: Error ratio above which a sensor is flagged anomalous.
         anomaly_sensor_pct: % of flagged sensors to declare whole window sensor-anomalous.
-        attribution_values: Optional per-sensor attribution from an
-            axiomatic method (FastSHAP or Integrated Gradients, see
-            src/autoencoder/explain/), shape (n_sensors,). When provided,
-            top_contributors are ranked by |attribution_value| instead of
-            raw reconstruction-error share -- this captures cross-sensor
-            interaction effects (the AE's bottleneck mixes every sensor
-            together) that the raw MSE split misses. sensor_errors/
-            total_error are always computed from the actual reconstruction
-            regardless.
-        attribution_method: Label for what produced `attribution_values`
-            (e.g. "fastshap", "integrated_gradients"). Ignored when
-            `attribution_values` is None -- the result always reports
-            "heuristic" in that case.
+        masked_sensors: Indices excluded from scoring (see
+            assess_window_quality) -- their reconstruction reflects a
+            neutral imputed input, not real signal, so they're zeroed out
+            of total_error/contribution ranking and forced un-flagged
+            rather than let them dominate or spuriously trip either.
 
     Returns:
         Dict with:
             sensor_errors: per-sensor MSE array
-            top_contributors: list of (index, name, error, pct[, attribution_value])
+            top_contributors: list of (index, name, error, pct)
             total_error: scalar total
-            attribution_method: "heuristic" or whatever was passed in
-        When attribution_values provided, also includes:
-            attribution_values: the input array, passed through for convenience
         When sensor_baselines provided, also includes:
             error_ratios: per-sensor error / baseline ratio
             sensor_flags: binary 0/1 array (1 = flagged)
@@ -59,42 +49,50 @@ def diagnose_window(
             sensors_anomalous: bool — True if pct_flagged > anomaly_sensor_pct
     """
     sensor_errors = per_sensor_mse(x, x_hat).detach().cpu().numpy()
-    total_error = float(sensor_errors.sum())
 
-    if attribution_values is not None:
-        contributions = sensor_contributions(np.abs(attribution_values), top_k=top_k)
-        method = attribution_method
-    else:
-        contributions = sensor_contributions(sensor_errors, top_k=top_k)
-        method = "heuristic"
+    # Masked (null-dominant) sensors reconstruct an artificial neutral input,
+    # not real signal -- zero their error out before ranking so they can't be
+    # reported as a top contributor or skew total_error.
+    ranking_errors = sensor_errors
+    if masked_sensors:
+        ranking_errors = sensor_errors.copy()
+        ranking_errors[masked_sensors] = 0.0
+
+    total_error = float(ranking_errors.sum())
+
+    contributions = sensor_contributions(ranking_errors, top_k=top_k)
 
     top_list = []
     for idx, pct in contributions:
         name = sensor_names[idx] if sensor_names else f"sensor_{idx}"
-        entry = {
+        top_list.append({
             "index": idx,
             "name": name,
             "error": float(sensor_errors[idx]),
             "contribution_pct": float(pct),
-        }
-        if attribution_values is not None:
-            entry["attribution_value"] = float(attribution_values[idx])
-        top_list.append(entry)
+        })
 
     result = {
         "sensor_errors": sensor_errors,
         "top_contributors": top_list,
         "total_error": total_error,
-        "attribution_method": method,
     }
-    if attribution_values is not None:
-        result["attribution_values"] = attribution_values
 
     if sensor_baselines is not None:
         safe_baselines = np.where(sensor_baselines > 0, sensor_baselines, 1e-10)
         error_ratios = sensor_errors / safe_baselines
         sensor_flags = (error_ratios > flag_threshold).astype(int)
-        pct_flagged = float(sensor_flags.sum() / len(sensor_flags) * 100)
+
+        # Masked sensors compare a neutral imputed value against a baseline
+        # computed from real readings -- that ratio is meaningless, so force
+        # them un-flagged and drop them from the flagged-% denominator too
+        # rather than let them spuriously trip (or mask) sensors_anomalous.
+        n_scored = len(sensor_flags)
+        if masked_sensors:
+            sensor_flags = sensor_flags.copy()
+            sensor_flags[masked_sensors] = 0
+            n_scored = len(sensor_flags) - len(masked_sensors)
+        pct_flagged = float(sensor_flags.sum() / n_scored * 100) if n_scored else 0.0
 
         result["error_ratios"] = error_ratios
         result["sensor_flags"] = sensor_flags

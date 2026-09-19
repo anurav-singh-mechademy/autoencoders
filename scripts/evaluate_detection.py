@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -39,7 +40,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, confusion_ma
 from autoencoder.logging_config import setup_logging
 from autoencoder.data.ingestion import load_data
 from autoencoder.data.preprocessing import construct_windows_with_metadata
-from autoencoder.artefacts.serialisation import load_artefacts, load_explainer
+from autoencoder.artefacts.serialisation import load_artefacts
 from autoencoder.inference.pipeline import infer_window
 from autoencoder.alerting.zones import classify_zone
 
@@ -89,11 +90,12 @@ def label_windows(windows: list[dict], events: list[dict], sensor_columns: list[
 
 def run_inference(
     labelled_windows, model, scaler, sensor_baselines, sensor_columns, thresholds, config,
-    explainer=None, use_integrated_gradients=False, ig_n_steps=50, ig_baseline=0.0,
+    tail_compression_scale=None,
 ):
     inference_cfg = config.get("inference", {})
     flag_threshold = inference_cfg.get("sensor_flag_threshold", 3.0)
     anomaly_sensor_pct = inference_cfg.get("anomaly_sensor_pct", 10.0)
+    missing_data_cfg = inference_cfg.get("missing_data", {})
     top_k = min(10, max(1, len(sensor_columns) // 5))
 
     records = []
@@ -107,14 +109,15 @@ def run_inference(
             sensor_baselines=sensor_baselines,
             flag_threshold=flag_threshold,
             anomaly_sensor_pct=anomaly_sensor_pct,
+            max_null_pct=missing_data_cfg.get("max_null_pct_per_sensor", 5.0),
+            max_consecutive_nulls=missing_data_cfg.get("max_consecutive_nulls_ffill", 3),
+            max_null_dominant_sensor_pct=missing_data_cfg.get("max_null_dominant_sensor_pct", 30.0),
             already_scaled=False,
-            explainer=explainer,
-            use_integrated_gradients=use_integrated_gradients,
-            ig_n_steps=ig_n_steps,
-            ig_baseline=ig_baseline,
+            tail_compression_scale=tail_compression_scale,
         )
         zone = classify_zone(result.window_score, thresholds) if result.usable else "green"
         top_names = [c["name"] for c in result.top_contributors] if result.usable else []
+        masked_names = [sensor_columns[i] for i in result.masked_sensors] if result.masked_sensors else []
 
         records.append({
             "window_id": w["window_id"],
@@ -126,7 +129,7 @@ def run_inference(
             "zone": zone,
             "usable": result.usable,
             "top_sensors": top_names,
-            "attribution_method": result.attribution_method if result.usable else None,
+            "masked_sensors": masked_names,
         })
     return records
 
@@ -174,8 +177,17 @@ def compute_metrics(records: list[dict], top_k: int) -> dict:
     sensor_attribution = None
     if len(tp_anomaly):
         recalls_at_k = []
+        n_masked_truth = 0
         for _, row in tp_anomaly.iterrows():
             truth = set(row["matched_sensors"])
+            masked = set(row.get("masked_sensors") or [])
+            if truth & masked:
+                # A genuinely spiked sensor was itself null-dominant in this
+                # window -- diagnose_window() forces masked sensors' error to
+                # 0 before ranking, so it structurally cannot appear in
+                # top_sensors regardless of model quality. Counted separately
+                # so a low recall@k here isn't misread as a model failure.
+                n_masked_truth += 1
             top = set(row["top_sensors"][:top_k])
             recalls_at_k.append(len(truth & top) / len(truth))
         sensor_attribution = {
@@ -183,7 +195,22 @@ def compute_metrics(records: list[dict], top_k: int) -> dict:
             "n_windows": int(len(tp_anomaly)),
             "mean": float(np.mean(recalls_at_k)),
             "median": float(np.median(recalls_at_k)),
+            "n_windows_with_masked_truth_sensor": n_masked_truth,
         }
+
+    usable = df[df["usable"]]
+    masking = None
+    if "masked_sensors" in usable.columns:
+        n_masked_windows = int(usable["masked_sensors"].map(len).gt(0).sum())
+        if n_masked_windows:
+            sensor_counts = Counter()
+            for sensors in usable["masked_sensors"]:
+                sensor_counts.update(sensors)
+            masking = {
+                "n_windows": n_masked_windows,
+                "pct_of_usable": float(n_masked_windows / len(usable) * 100) if len(usable) else 0.0,
+                "top_masked_sensors": sensor_counts.most_common(15),
+            }
 
     return {
         "n_windows": len(df),
@@ -195,6 +222,7 @@ def compute_metrics(records: list[dict], top_k: int) -> dict:
         "zones": zone_metrics,
         "shutdown_flagged_pct": shutdown_flagged_pct,
         "sensor_attribution": sensor_attribution,
+        "masking": masking,
     }
 
 
@@ -240,8 +268,25 @@ def summarize(records: list[dict], top_k: int) -> str:
             f"Sensor attribution recall@{sa['top_k']} on {sa['n_windows']} correctly-flagged anomaly windows: "
             f"mean={sa['mean']:.3f}  median={sa['median']:.3f}"
         )
+        if sa["n_windows_with_masked_truth_sensor"]:
+            lines.append(
+                f"  Caveat: {sa['n_windows_with_masked_truth_sensor']} of those windows had a truly-spiked "
+                "sensor that was ALSO null-dominant (masked out of scoring) in that window -- it structurally "
+                "cannot appear in top_sensors regardless of model quality, which pulls recall@k down for "
+                "reasons unrelated to detection accuracy."
+            )
     else:
         lines.append("No correctly-flagged anomaly windows with known spiked sensors to score attribution on.")
+    lines.append("")
+
+    mk = m["masking"]
+    if mk:
+        lines.append(
+            f"Null-dominant sensors masked out (window still scored on the rest): "
+            f"{mk['n_windows']} / usable windows ({mk['pct_of_usable']:.1f}%)"
+        )
+        for name, count in mk["top_masked_sensors"]:
+            lines.append(f"  {name:35s} masked in {count} windows")
 
     return "\n".join(lines)
 
@@ -253,14 +298,6 @@ def main():
     parser.add_argument("--model-dir", required=True, help="Path to trained model artefacts directory")
     parser.add_argument("--config", default="configs/default.yaml", help="YAML config file")
     parser.add_argument("--output", required=True, help="Output directory for per-window results + report")
-    parser.add_argument(
-        "--attribution-method", default="auto", choices=["auto", "heuristic", "fastshap", "integrated_gradients"],
-        help="'auto' (default): use a saved FastSHAP explainer if --model-dir has one, else the heuristic. "
-             "'heuristic'/'integrated_gradients' force that method regardless of what's saved. "
-             "'fastshap' requires an explainer to be present in --model-dir.",
-    )
-    parser.add_argument("--ig-n-steps", type=int, default=50, help="Riemann-sum steps for Integrated Gradients")
-    parser.add_argument("--ig-baseline", type=float, default=0.0, help="Baseline value for Integrated Gradients")
     args = parser.parse_args()
 
     import yaml
@@ -270,17 +307,6 @@ def main():
 
     model, scaler, thresholds, metadata, _, sensor_baselines = load_artefacts(args.model_dir)
     sensor_columns = metadata["sensor_columns"]
-
-    explainer = None
-    use_ig = args.attribution_method == "integrated_gradients"
-    if args.attribution_method in ("auto", "fastshap"):
-        explainer = load_explainer(args.model_dir)
-        if args.attribution_method == "fastshap" and explainer is None:
-            raise SystemExit(f"--attribution-method fastshap requires an explainer in {args.model_dir}, found none.")
-    if explainer is not None:
-        logger.info("Using FastSHAP explainer -- sensor attribution will use Shapley values, not the raw-error heuristic.")
-    elif use_ig:
-        logger.info("Using Integrated Gradients (n_steps=%d, baseline=%.3f) for sensor attribution.", args.ig_n_steps, args.ig_baseline)
 
     with open(args.events) as f:
         events_payload = json.load(f)
@@ -293,8 +319,7 @@ def main():
     labelled = label_windows(windows, events, sensor_columns)
     records = run_inference(
         labelled, model, scaler, sensor_baselines, sensor_columns, thresholds, config,
-        explainer=explainer, use_integrated_gradients=use_ig,
-        ig_n_steps=args.ig_n_steps, ig_baseline=args.ig_baseline,
+        tail_compression_scale=metadata.get("tail_compression_scale"),
     )
 
     top_k = min(10, max(1, len(sensor_columns) // 5))
@@ -307,6 +332,7 @@ def main():
     out_df = pd.DataFrame(records)
     out_df["matched_sensors"] = out_df["matched_sensors"].map(",".join)
     out_df["top_sensors"] = out_df["top_sensors"].map(",".join)
+    out_df["masked_sensors"] = out_df["masked_sensors"].map(",".join)
     out_df.to_csv(output_dir / "window_results.csv", index=False)
 
     with open(output_dir / "report.txt", "w") as f:

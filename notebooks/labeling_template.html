@@ -1,0 +1,589 @@
+<title>__EQUIPMENT_ID__ Window Review</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --surface: #f2f0e9;
+    --surface-raised: #fffefb;
+    --surface-sunken: #e8e5da;
+    --ink: #211d16;
+    --ink-muted: #6f6a5c;
+    --ink-faint: #a6a091;
+    --line: #dcd7c8;
+    --accent: #a85a1f;
+    --accent-ink: #fff9f2;
+    --zone-green: #3f7a54;
+    --zone-green-soft: #e2ecdf;
+    --zone-yellow: #9c7a1f;
+    --zone-yellow-soft: #f2ead2;
+    --zone-red: #a3372f;
+    --zone-red-soft: #f3ded9;
+    --focus: #2f6fb0;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --surface: #18140d;
+      --surface-raised: #221c13;
+      --surface-sunken: #100d08;
+      --ink: #f1ece0;
+      --ink-muted: #b3ab97;
+      --ink-faint: #766f5f;
+      --line: #3a3222;
+      --accent: #d98a3d;
+      --accent-ink: #1a1005;
+      --zone-green: #6bbf8c;
+      --zone-green-soft: #203225;
+      --zone-yellow: #d9b452;
+      --zone-yellow-soft: #332a13;
+      --zone-red: #dd7469;
+      --zone-red-soft: #362019;
+      --focus: #6fa8dc;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #18140d;
+    --surface-raised: #221c13;
+    --surface-sunken: #100d08;
+    --ink: #f1ece0;
+    --ink-muted: #b3ab97;
+    --ink-faint: #766f5f;
+    --line: #3a3222;
+    --accent: #d98a3d;
+    --accent-ink: #1a1005;
+    --zone-green: #6bbf8c;
+    --zone-green-soft: #203225;
+    --zone-yellow: #d9b452;
+    --zone-yellow-soft: #332a13;
+    --zone-red: #dd7469;
+    --zone-red-soft: #362019;
+    --focus: #6fa8dc;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--surface);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  button { font-family: inherit; }
+
+  header.app-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-raised);
+    flex-shrink: 0;
+  }
+  header.app-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 0;
+  }
+  header.app-header .eq-tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--ink-muted);
+  }
+  header.app-header .counts {
+    margin-left: auto;
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+  header.app-header .counts b { color: var(--ink); font-weight: 600; }
+
+  .shell { display: flex; flex: 1; min-height: 0; }
+
+  .sidebar {
+    width: 360px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-raised);
+  }
+  .sidebar .search-row {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sidebar input[type="search"] {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .sidebar input[type="search"]::placeholder { color: var(--ink-faint); }
+
+  .window-list { flex: 1; overflow-y: auto; }
+  .window-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .window-item:hover { background: var(--surface-sunken); }
+  .window-item.active { background: var(--surface-sunken); box-shadow: inset 3px 0 0 var(--accent); }
+  .zone-chip {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .zone-chip.zone-red { background: var(--zone-red); }
+  .zone-chip.zone-yellow { background: var(--zone-yellow); }
+  .zone-chip.zone-green { background: var(--zone-green); }
+  .window-item .meta { min-width: 0; flex: 1; }
+  .window-item .win-id { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; font-weight: 600; }
+  .window-item .win-time { font-size: 11px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .window-item .win-score { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-muted); flex-shrink: 0; }
+  .label-badge {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .label-badge.zone-red { background: var(--zone-red-soft); color: var(--zone-red); }
+  .label-badge.zone-yellow { background: var(--zone-yellow-soft); color: var(--zone-yellow); }
+  .label-badge.zone-green { background: var(--zone-green-soft); color: var(--zone-green); }
+
+  .detail { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .detail-header {
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .detail-header .win-title { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 600; }
+  .detail-header .win-range { font-size: 12.5px; color: var(--ink-muted); }
+  .zone-pill {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .zone-pill.zone-red { background: var(--zone-red-soft); color: var(--zone-red); }
+  .zone-pill.zone-yellow { background: var(--zone-yellow-soft); color: var(--zone-yellow); }
+  .zone-pill.zone-green { background: var(--zone-green-soft); color: var(--zone-green); }
+  .detail-header .score-readout { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-muted); }
+  .detail-header .score-readout b { color: var(--ink); font-size: 14px; }
+
+  .detail-body { flex: 1; display: flex; min-height: 0; }
+  .chart-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 10px 6px 10px 18px; }
+  #chart { flex: 1; min-height: 0; }
+  .chart-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-size: 13px; }
+
+  .sensor-pane {
+    width: 300px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .sensor-pane .search-row { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .sensor-pane input[type="search"] {
+    width: 100%; padding: 6px 9px; border-radius: 5px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-size: 12.5px; font-family: inherit;
+  }
+  .sensor-list { flex: 1; overflow-y: auto; }
+  .sensor-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .sensor-row label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; cursor: pointer; }
+  .sensor-row .s-name { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sensor-row .s-bar {
+    width: 34px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--surface-sunken);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sensor-row .s-bar > span { display: block; height: 100%; background: var(--accent); }
+  .sensor-row.not-ranked { color: var(--ink-faint); }
+
+  .label-bar {
+    flex-shrink: 0;
+    border-top: 1px solid var(--line);
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface-raised);
+  }
+  .label-bar .zone-btn {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .label-bar .zone-btn[data-zone="red"].selected { background: var(--zone-red); color: #fff8f6; border-color: var(--zone-red); }
+  .label-bar .zone-btn[data-zone="yellow"].selected { background: var(--zone-yellow); color: #241d05; border-color: var(--zone-yellow); }
+  .label-bar .zone-btn[data-zone="green"].selected { background: var(--zone-green); color: #f4fbf6; border-color: var(--zone-green); }
+  .label-bar input[type="text"] {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12.5px;
+    font-family: inherit;
+  }
+  .label-bar .save-btn {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .label-bar .save-status { font-size: 11.5px; color: var(--ink-muted); min-width: 90px; }
+  .label-bar .save-btn:disabled { opacity: 0.5; cursor: default; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+
+<header class="app-header">
+  <h1>Window Review Bench</h1>
+  <span class="eq-tag" id="eq-tag">—</span>
+  <div class="counts">
+    <span><b id="count-total">0</b> flagged windows</span>
+    <span><b id="count-labeled">0</b> reviewed</span>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="search-row">
+      <input type="search" id="window-search" placeholder="Search window id, zone, or sensor…" />
+    </div>
+    <div class="window-list" id="window-list"></div>
+  </aside>
+
+  <main class="detail">
+    <div class="detail-header">
+      <span class="win-title mono" id="d-id">—</span>
+      <span class="zone-pill" id="d-zone">—</span>
+      <span class="win-range" id="d-range"></span>
+      <span class="score-readout" id="d-score"></span>
+    </div>
+    <div class="detail-body">
+      <div class="chart-pane">
+        <div id="chart"></div>
+        <div class="chart-empty" id="chart-empty">Select a window from the list.</div>
+      </div>
+      <aside class="sensor-pane">
+        <div class="search-row">
+          <input type="search" id="sensor-search" placeholder="Filter sensors…" />
+        </div>
+        <div class="sensor-list" id="sensor-list"></div>
+      </aside>
+    </div>
+    <div class="label-bar">
+      <button class="zone-btn" data-zone="green">Green</button>
+      <button class="zone-btn" data-zone="yellow">Yellow</button>
+      <button class="zone-btn" data-zone="red">Red</button>
+      <input type="text" id="label-note" placeholder="Optional note for this call…" />
+      <button class="save-btn" id="save-btn" disabled>Save review</button>
+      <span class="save-status" id="save-status"></span>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script>
+window.__MANIFEST__ = __MANIFEST_JSON__;
+</script>
+<script>
+(function () {
+  "use strict";
+  const M = window.__MANIFEST__;
+  const DEFAULT_TOP_K = 5;
+
+  const state = {
+    windows: M.windows.slice().sort((a, b) => b.score - a.score),
+    labels: {},          // window id (string) -> {zone, note, labeled_at}
+    chunkCache: {},      // chunk path -> parsed payload
+    selectedId: null,
+    selectedSensors: new Set(),
+    pendingZone: null,
+  };
+
+  const windowById = new Map(state.windows.map((w) => [String(w.id), w]));
+
+  document.getElementById("eq-tag").textContent = M.equipment_id;
+  document.getElementById("count-total").textContent = state.windows.length;
+
+  function updateLabeledCount() {
+    document.getElementById("count-labeled").textContent = Object.keys(state.labels).length;
+  }
+
+  function fmtTime(iso) {
+    return iso.replace("T", " ").slice(0, 16);
+  }
+
+  function renderSidebar() {
+    const q = document.getElementById("window-search").value.trim().toLowerCase();
+    const list = document.getElementById("window-list");
+    list.innerHTML = "";
+    for (const w of state.windows) {
+      if (q) {
+        const hay = [
+          String(w.id), w.zone,
+          ...w.sensors.slice(0, 8).map((s) => s.name.toLowerCase()),
+        ].join(" ").toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      const item = document.createElement("div");
+      item.className = "window-item" + (String(w.id) === state.selectedId ? " active" : "");
+      const label = state.labels[String(w.id)];
+      item.innerHTML =
+        '<span class="zone-chip zone-' + w.zone + '"></span>' +
+        '<span class="meta">' +
+          '<div class="win-id mono">#' + w.id + '</div>' +
+          '<div class="win-time">' + fmtTime(w.start) + '</div>' +
+        '</span>' +
+        '<span class="win-score mono">' + w.score.toFixed(1) + '</span>' +
+        (label ? '<span class="label-badge zone-' + label.zone + '">' + label.zone + '</span>' : '');
+      item.addEventListener("click", () => selectWindow(String(w.id)));
+      list.appendChild(item);
+    }
+  }
+
+  function renderSensorList(win, chunkEntry) {
+    const q = document.getElementById("sensor-search").value.trim().toLowerCase();
+    const rankedNames = new Set(win.sensors.map((s) => s.name));
+    const rows = win.sensors.slice();
+    for (const name of M.sensor_columns) {
+      if (!rankedNames.has(name)) rows.push({ name, error: null, ratio: null, pct: null });
+    }
+    const maxPct = win.sensors.length ? win.sensors[0].pct : 1;
+
+    const listEl = document.getElementById("sensor-list");
+    listEl.innerHTML = "";
+    for (const s of rows) {
+      if (q && !s.name.toLowerCase().includes(q)) continue;
+      const isRanked = s.pct !== null;
+      const row = document.createElement("div");
+      row.className = "sensor-row" + (isRanked ? "" : " not-ranked");
+      const checked = state.selectedSensors.has(s.name) ? "checked" : "";
+      const barWidth = isRanked ? Math.max(4, Math.round((s.pct / maxPct) * 100)) : 0;
+      row.innerHTML =
+        '<label>' +
+          '<input type="checkbox" data-sensor="' + s.name + '" ' + checked + ' ' + (chunkEntry ? "" : "disabled") + ' />' +
+          '<span class="s-name">' + s.name + '</span>' +
+        '</label>' +
+        '<span class="s-bar"><span style="width:' + barWidth + '%"></span></span>';
+      listEl.appendChild(row);
+    }
+    listEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const name = e.target.getAttribute("data-sensor");
+        if (e.target.checked) state.selectedSensors.add(name);
+        else state.selectedSensors.delete(name);
+        drawChart(win, chunkEntry);
+      });
+    });
+  }
+
+  function drawChart(win, chunkEntry) {
+    const names = Array.from(state.selectedSensors);
+    const chartEl = document.getElementById("chart");
+    const emptyEl = document.getElementById("chart-empty");
+    if (!chunkEntry || names.length === 0) {
+      chartEl.style.display = "none";
+      emptyEl.style.display = "flex";
+      emptyEl.textContent = chunkEntry ? "Pick at least one sensor to plot." : "Loading raw window data…";
+      return;
+    }
+    chartEl.style.display = "block";
+    emptyEl.style.display = "none";
+
+    const n = names.length;
+    const gap = 0.03;
+    const bandHeight = (1 - gap * (n - 1)) / n;
+    const traces = [];
+    const layout = {
+      margin: { l: 0, r: 10, t: 6, b: 34 },
+      showlegend: false,
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: "IBM Plex Mono, monospace", size: 10, color: getComputedStyle(document.body).getPropertyValue("--ink-muted") },
+      grid: { rows: n, columns: 1, pattern: "independent" },
+      xaxis: { showgrid: false, zeroline: false, tickfont: { size: 9 } },
+    };
+    names.forEach((name, i) => {
+      const top = 1 - i * (bandHeight + gap);
+      const bottom = top - bandHeight;
+      const axisKey = "yaxis" + (i === 0 ? "" : i + 1);
+      layout[axisKey] = {
+        domain: [Math.max(0, bottom), top],
+        title: { text: name, font: { size: 9.5 } },
+        showgrid: true,
+        gridcolor: getComputedStyle(document.body).getPropertyValue("--line"),
+        zeroline: false,
+        tickfont: { size: 9 },
+      };
+      traces.push({
+        x: chunkEntry.timestamps,
+        y: chunkEntry.raw_values[name],
+        type: "scatter",
+        mode: "lines",
+        line: { width: 1.4, color: getComputedStyle(document.body).getPropertyValue("--accent") },
+        xaxis: "x",
+        yaxis: (i === 0 ? "y" : "y" + (i + 1)),
+        name,
+      });
+    });
+    Plotly.react("chart", traces, layout, { responsive: true, displaylogo: false });
+  }
+
+  async function fetchChunk(path) {
+    if (state.chunkCache[path]) return state.chunkCache[path];
+    const res = await fetch(path);
+    const payload = await res.json();
+    state.chunkCache[path] = payload;
+    return payload;
+  }
+
+  async function selectWindow(id) {
+    state.selectedId = id;
+    const win = windowById.get(id);
+    renderSidebar();
+
+    document.getElementById("d-id").textContent = "#" + win.id;
+    const zoneEl = document.getElementById("d-zone");
+    zoneEl.textContent = win.zone;
+    zoneEl.className = "zone-pill zone-" + win.zone;
+    document.getElementById("d-range").textContent = fmtTime(win.start) + " – " + fmtTime(win.end);
+    document.getElementById("d-score").innerHTML = "score <b>" + win.score.toFixed(2) + "</b>";
+
+    state.selectedSensors = new Set(win.sensors.slice(0, DEFAULT_TOP_K).map((s) => s.name));
+    renderSensorList(win, null);
+    drawChart(win, null);
+
+    const existing = state.labels[id];
+    setPendingZone(existing ? existing.zone : null);
+    document.getElementById("label-note").value = existing ? (existing.note || "") : "";
+    document.getElementById("save-btn").disabled = false;
+    document.getElementById("save-status").textContent = existing ? "Reviewed " + fmtTime(existing.labeled_at) : "";
+
+    const chunkEntry = (await fetchChunk(win.chunk))[String(win.id)];
+    if (state.selectedId !== id) return; // user moved on before fetch resolved
+    renderSensorList(win, chunkEntry);
+    drawChart(win, chunkEntry);
+  }
+
+  function setPendingZone(zone) {
+    state.pendingZone = zone;
+    document.querySelectorAll(".zone-btn").forEach((b) => {
+      b.classList.toggle("selected", b.getAttribute("data-zone") === zone);
+    });
+  }
+
+  document.querySelectorAll(".zone-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setPendingZone(btn.getAttribute("data-zone")));
+  });
+
+  document.getElementById("window-search").addEventListener("input", renderSidebar);
+  document.getElementById("sensor-search").addEventListener("input", () => {
+    const win = windowById.get(state.selectedId);
+    if (win) renderSensorList(win, state.chunkCache[win.chunk] ? state.chunkCache[win.chunk][String(win.id)] : null);
+  });
+
+  let db = null;
+  claude.use("db").then((ns) => {
+    db = ns;
+    if (!db) return;
+    db.collection("labels").get().then((snap) => {
+      for (const doc of snap.docs) {
+        if (doc.exists) state.labels[doc.id] = doc.data();
+      }
+      updateLabeledCount();
+      renderSidebar();
+      if (state.selectedId && state.labels[state.selectedId]) {
+        const l = state.labels[state.selectedId];
+        setPendingZone(l.zone);
+        document.getElementById("label-note").value = l.note || "";
+      }
+    }).catch(() => {});
+  });
+
+  document.getElementById("save-btn").addEventListener("click", async () => {
+    if (!state.selectedId || !state.pendingZone) {
+      document.getElementById("save-status").textContent = "Pick a zone first.";
+      return;
+    }
+    if (!db) {
+      document.getElementById("save-status").textContent = "Review storage unavailable in this view.";
+      return;
+    }
+    const body = {
+      zone: state.pendingZone,
+      note: document.getElementById("label-note").value.trim(),
+      labeled_at: new Date().toISOString(),
+      model_zone: windowById.get(state.selectedId).zone,
+    };
+    document.getElementById("save-status").textContent = "Saving…";
+    try {
+      await db.collection("labels").doc(state.selectedId).set(body);
+      state.labels[state.selectedId] = body;
+      updateLabeledCount();
+      renderSidebar();
+      document.getElementById("save-status").textContent = "Saved " + fmtTime(body.labeled_at);
+    } catch (e) {
+      document.getElementById("save-status").textContent = "Save failed — try again.";
+    }
+  });
+
+  renderSidebar();
+  if (state.windows.length) selectWindow(String(state.windows[0].id));
+})();
+</script>

@@ -68,9 +68,36 @@ class TestAssessWindowQuality:
         assert result["usable"]
         assert not np.isnan(result["filled_window"]).any()
 
-    def test_large_gap_not_usable(self):
+    def test_large_gap_in_one_sensor_masked_not_rejected(self):
+        # 1/20 = 5% of sensors null-dominant, below the default 30% window
+        # threshold -- window stays usable with that sensor masked out,
+        # rather than the whole window being rejected.
         window = np.random.rand(120, 20)
         window[:20, 0] = np.nan  # 20 consecutive nulls in sensor 0
         result = assess_window_quality(window, max_null_pct_per_sensor=5.0, max_consecutive_nulls=3)
+        assert result["usable"]
+        assert result["masked_sensors"] == [0]
+        assert any("null_dominant_sensors" in f for f in result["quality_flags"])
+
+    def test_too_many_null_dominant_sensors_not_usable(self):
+        # 10/20 = 50% of sensors null-dominant, above the default 30% window
+        # threshold -- the whole window is rejected outright.
+        window = np.random.rand(120, 20)
+        for col in range(10):
+            window[:20, col] = np.nan
+        result = assess_window_quality(window, max_null_pct_per_sensor=5.0, max_consecutive_nulls=3)
         assert not result["usable"]
         assert result["filled_window"] is None
+        assert result["masked_sensors"] == list(range(10))
+        assert any("window rejected" in f for f in result["quality_flags"])
+
+    def test_custom_window_threshold(self):
+        # Same 5%-of-sensors case as the masking test above, but with the
+        # window-level tolerance tightened to 1% -- now it should reject.
+        window = np.random.rand(120, 20)
+        window[:20, 0] = np.nan
+        result = assess_window_quality(
+            window, max_null_pct_per_sensor=5.0, max_consecutive_nulls=3,
+            max_null_dominant_sensor_pct=1.0,
+        )
+        assert not result["usable"]

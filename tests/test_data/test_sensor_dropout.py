@@ -26,22 +26,26 @@ class TestDetectSensorDropoutWindows:
         assert result.is_dropped[1] == True
         assert result.n_dropped == 1
 
-    def test_stuck_sensors_flagged(self):
-        """A window where a sensor never changes should be excluded."""
+    def test_stuck_sensors_never_flagged(self):
+        """A window is no longer excluded for stuck (flat) sensors, however
+        many -- a genuinely deadband-/compression-logged sensor is real
+        signal, not a fault, and shouldn't cost every other sensor in the
+        window its data. Chronically-dead sensors are dropped once, at the
+        feature level, by preprocessing.remove_null_or_stuck_columns
+        instead -- see this module's docstring."""
         rng = np.random.default_rng(42)
         windows = [rng.normal(50.0, 5.0, (120, 20)) for _ in range(3)]
-        # 2/20 = 10% stuck sensors in window 0
-        windows[0][:, 0] = 1.0
-        windows[0][:, 1] = 1.0
+        windows[0][:, :] = 1.0  # every sensor stuck in window 0
 
         result = detect_sensor_dropout_windows(windows, threshold_pct=5.0)
-        assert result.is_dropped[0] == True
+        assert result.is_dropped[0] == False
+        assert result.bad_sensor_pct[0] == 0.0
 
     def test_below_threshold_not_flagged(self):
-        """A single null/stuck sensor (5% of 20) should not exceed a 5% threshold."""
+        """A single null sensor (5% of 20) should not exceed a 5% threshold."""
         rng = np.random.default_rng(42)
         windows = [rng.normal(50.0, 5.0, (120, 20)) for _ in range(3)]
-        windows[0][:, 0] = 1.0  # 1/20 = 5%, not > 5%
+        windows[0][:, 0] = np.nan  # 1/20 = 5%, not > 5%
 
         result = detect_sensor_dropout_windows(windows, threshold_pct=5.0)
         assert result.is_dropped[0] == False

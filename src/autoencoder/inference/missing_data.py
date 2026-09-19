@@ -79,16 +79,36 @@ def assess_window_quality(
     window: np.ndarray,
     max_null_pct_per_sensor: float = 5.0,
     max_consecutive_nulls: int = 3,
+    max_null_dominant_sensor_pct: float = 30.0,
 ) -> dict:
-    """Assess whether a window is usable for inference.
+    """Assess whether a window is usable for inference, masking out individual
+    null-dominant sensors instead of rejecting the whole window where possible.
+
+    A sensor is "null-dominant" within this window if either:
+      - its raw null fraction (before any fill) exceeds max_null_pct_per_sensor,
+        even if every gap is individually short enough to forward-fill -- too
+        much of that sensor's reading in this window would be fabricated to
+        trust it, or
+      - a gap longer than max_consecutive_nulls left it with unfillable NaNs.
+
+    The window as a whole is rejected outright only if the *fraction of all
+    sensors* that are null-dominant exceeds max_null_dominant_sensor_pct --
+    below that, the window is still scored, with null-dominant sensors
+    excluded from the reconstruction error and diagnosis (see
+    src/autoencoder/inference/pipeline.py) rather than contaminating either
+    with fabricated or missing values.
 
     Returns:
         Dict with:
-            usable: bool — whether the window can be used after filling
+            usable: bool — whether the window can be scored (possibly with
+                some sensors masked out)
             filled_window: the forward-filled window (or None if not usable)
             quality_flags: list of issues found
             fill_info: stats from forward-fill
+            masked_sensors: sorted list of null-dominant sensor indices to
+                exclude from scoring (empty list if none)
     """
+    n_sensors = window.shape[1]
     null_info = check_nulls(window)
 
     if not null_info["has_nulls"]:
@@ -97,24 +117,37 @@ def assess_window_quality(
             "filled_window": window,
             "quality_flags": [],
             "fill_info": {"total_filled": 0, "unfillable": 0, "still_has_nulls": False},
+            "masked_sensors": [],
         }
 
     filled, fill_info = forward_fill(window, max_consecutive=max_consecutive_nulls)
+
+    bad_pct_sensors = set(np.where(null_info["null_pct_per_sensor"] > max_null_pct_per_sensor)[0].tolist())
+    still_null_sensors = set(np.where(np.isnan(filled).any(axis=0))[0].tolist())
+    null_dominant_sensors = sorted(bad_pct_sensors | still_null_sensors)
+
+    null_dominant_pct = len(null_dominant_sensors) / n_sensors * 100
     flags = []
+    if null_dominant_sensors:
+        flags.append(f"null_dominant_sensors ({null_dominant_pct:.1f}% of sensors): {null_dominant_sensors}")
 
-    # Check per-sensor null percentage (on original window)
-    bad_sensors = np.where(null_info["null_pct_per_sensor"] > max_null_pct_per_sensor)[0]
-    if len(bad_sensors) > 0:
-        flags.append(f"sensors_exceed_null_threshold: {bad_sensors.tolist()}")
-
-    if fill_info["still_has_nulls"]:
-        flags.append("unfillable_nulls_remain")
-
-    usable = not fill_info["still_has_nulls"] and len(bad_sensors) == 0
+    if null_dominant_pct > max_null_dominant_sensor_pct:
+        flags.append(
+            f"null_dominant_sensor_pct {null_dominant_pct:.1f}% exceeds window "
+            f"threshold {max_null_dominant_sensor_pct:.1f}% -- window rejected"
+        )
+        return {
+            "usable": False,
+            "filled_window": None,
+            "quality_flags": flags,
+            "fill_info": fill_info,
+            "masked_sensors": null_dominant_sensors,
+        }
 
     return {
-        "usable": usable,
-        "filled_window": filled if usable else None,
+        "usable": True,
+        "filled_window": filled,
         "quality_flags": flags,
         "fill_info": fill_info,
+        "masked_sensors": null_dominant_sensors,
     }

@@ -31,7 +31,13 @@ def main():
     parser.add_argument("--sensor-columns", default=None, help="Comma-separated sensor column names (for CSV).")
     parser.add_argument("--top-k", type=int, default=5, help="Number of top contributing sensors to show.")
     parser.add_argument("--zone-history", default=None, help="Comma-separated previous zones for persistence (e.g., 'green,yellow,red').")
+    parser.add_argument("--config", default=None, help="YAML config file -- reads inference.missing_data thresholds if given, else uses infer_window's built-in defaults.")
     args = parser.parse_args()
+
+    missing_data_cfg = {}
+    if args.config:
+        with open(args.config) as f:
+            missing_data_cfg = (yaml.safe_load(f).get("inference", {}) or {}).get("missing_data", {}) or {}
 
     # Load model artefacts
     logger.info("Loading model from %s", args.model)
@@ -67,12 +73,20 @@ def main():
         scaler=scaler,
         sensor_names=sensor_names,
         top_k=args.top_k,
+        max_null_pct=missing_data_cfg.get("max_null_pct_per_sensor", 5.0),
+        max_consecutive_nulls=missing_data_cfg.get("max_consecutive_nulls_ffill", 3),
+        max_null_dominant_sensor_pct=missing_data_cfg.get("max_null_dominant_sensor_pct", 30.0),
+        tail_compression_scale=metadata.get("tail_compression_scale"),
     )
 
     if not result.usable:
         print(f"\nWindow NOT usable for inference.")
         print(f"Quality flags: {result.quality_flags}")
         return
+
+    if result.masked_sensors:
+        masked_names = [sensor_names[i] for i in result.masked_sensors]
+        print(f"\n{len(result.masked_sensors)} sensor(s) excluded from scoring (null-dominant): {masked_names}")
 
     # Classify zone
     zone = classify_zone(result.window_score, thresholds)

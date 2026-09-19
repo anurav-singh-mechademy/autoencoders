@@ -103,7 +103,13 @@ def validate_cleaning(
 
             fig.suptitle(f"{name_i} vs {name_j}")
             fig.tight_layout()
-            path = str(output_dir / f"scatter_{idx:02d}_{name_i}_vs_{name_j}.png")
+            # Sanitize for the FILENAME only (title/labels above keep the real
+            # tag) -- a tag containing "/" (a real historian naming
+            # convention, e.g. "5LI-5071D/PV") would otherwise be read as a
+            # path separator and fail with a missing-directory error.
+            safe_i = name_i.replace("/", "-")
+            safe_j = name_j.replace("/", "-")
+            path = str(output_dir / f"scatter_{idx:02d}_{safe_i}_vs_{safe_j}.png")
             fig.savefig(path, dpi=100)
             plt.close(fig)
             plot_paths.append(path)

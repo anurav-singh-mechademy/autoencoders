@@ -2,7 +2,30 @@
 
 import pytest
 
-from autoencoder.alerting.persistence import apply_persistence
+from autoencoder.alerting.persistence import apply_persistence, compute_alert_level_timeline
+
+
+class TestComputeAlertLevelTimeline:
+    def test_matches_apply_persistence_at_every_step(self):
+        # The streaming version must agree with re-running apply_persistence
+        # on every growing prefix -- that's the exact behavior it's meant to
+        # replicate at O(n) instead of O(n^2).
+        zones = ["green", "red", "red", "red", "green", "yellow", "yellow", "yellow", "yellow"]
+        streaming = compute_alert_level_timeline(zones)
+        expected = [apply_persistence(zones[: i + 1])["alert_level"] for i in range(len(zones))]
+        assert streaming == expected
+
+    def test_empty_timeline(self):
+        assert compute_alert_level_timeline([]) == []
+
+    def test_mixed_window_rule_matches_apply_persistence(self):
+        zones = ["red", "green", "yellow", "green", "red", "green"]
+        streaming = compute_alert_level_timeline(zones, mixed_window_hours=2, window_minutes=30)
+        expected = [
+            apply_persistence(zones[: i + 1], mixed_window_hours=2, window_minutes=30)["alert_level"]
+            for i in range(len(zones))
+        ]
+        assert streaming == expected
 
 
 class TestApplyPersistence:

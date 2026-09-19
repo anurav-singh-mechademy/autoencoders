@@ -1,0 +1,126 @@
+# Autoencoder Equipment Health Monitoring — 5P921A config
+# Variant: entire detected sensor set (no restrict_to_event_sensors), cleaning
+# replaced by dropping train/val windows touched by a labeled event node
+# (cleaning.order: [] + preprocessing.exclude_event_touched_windows), regime
+# -stratified split (training.split_stratify_by left at its default "regime",
+# NOT month). Output goes to output_5P921A_full_sensors_event_excl/.
+# Equipment 5P921A. Data comes from 5P921A_combined_with_events.parquet
+# (15-second historian cadence, "timestamp" column) paired with
+# 5P921A_event_labels_long.parquet for ground truth (see
+# src/autoencoder/evaluation/ground_truth.py). The combined file carries two
+# ground-truth bookkeeping columns alongside real sensor tags --
+# active_node_ids (list) and n_active_nodes (int) -- which must be excluded
+# from the sensor set or they'd be fed into the autoencoder as if they were
+# sensor readings.
+
+data:
+  frequency_seconds: 15
+  window_rows: 120            # 30 minutes = 120 rows at 15-sec intervals
+  timestamp_column: "timestamp"
+  exclude_columns:
+    - "active_node_ids"
+    - "n_active_nodes"
+
+preprocessing:
+  scaler: "robust"
+  restrict_to_event_sensors: false  # full sensor set -- this variant deliberately does NOT restrict
+  exclude_event_touched_windows: true  # replaces the IF/PCA/Mahalanobis detectors below (order: [])
+                                        # as the sole definition of "not normal" -- ground truth directly
+  max_null_pct: 50    # drop a feature only if it's null in >50% of windows
+  max_stuck_pct: 100   # never drop a feature merely for being stuck/flat -- we work with
+                       # stuck features; a truly always-constant sensor is still caught by
+                       # variance_threshold above. Window-level dropout (sensor_dropout.py)
+                       # likewise only excludes a window for null sensors, never stuck ones.
+  tail_compression_scale: 20  # ON by default (standard value, matching 34/40/62/130_data.yaml) --
+                              # real historian data routinely has IQR-degenerate tags (near
+                              # -constant bulk + rare extreme/glitch readings) that otherwise
+                              # blow up the loss under plain (x-median)/IQR scaling.
+  sensor_dropout:
+    threshold_pct: 5
+
+regime:
+  method: "kmeans"
+  n_clusters: 3
+  features: []                 # No speed/power/discharge_pressure-equivalent tags
+                                 # identified yet -- falls back to
+                                 # segment_regimes_unsupervised() (PCA + KMeans).
+
+transient:
+  speed_change_threshold_pct: 15
+
+cleaning:
+  order: []  # IF/PCA/Mahalanobis skipped -- preprocessing.exclude_event_touched_windows above replaces them
+  isolation_forest:
+    contamination: 0.05
+    n_estimators: 200
+    random_state: 42
+  pca:
+    variance_threshold: 0.95
+    outlier_std: 3.0
+  mahalanobis:
+    chi2_percentile: 97.5
+  max_removal_pct: 40
+
+model:
+  latent_variance_threshold: 0.95
+  latent_dim_floor: 4
+  max_hidden_layers: 3
+  dropout: 0.2
+  norm: "layer"
+  loss: "mse"
+
+training:
+  optimizer: "adam"
+  learning_rate: 0.001
+  weight_decay: 0.0003
+  lr_scheduler:
+    type: "reduce_on_plateau"
+    factor: 0.5
+    patience: 10
+  max_epochs: 150
+  patience_per_hidden_layer: 2
+  overfit_ratio_threshold: 1.5
+  batch_size_rows: 256
+  splits:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  seed: 42
+
+thresholds:
+  green_yellow: 90
+  yellow_red: 99
+  method: "gpd_tail"
+  spread: "mad"
+  calibration_source: "val"
+  score_aggregation: "p95"
+
+alerting:
+  persistence:
+    red_to_yellow_alert: 2
+    red_to_red_alert: 3
+    yellow_consecutive: 4
+    mixed_window_hours: 2
+
+inference:
+  missing_data:
+    max_consecutive_nulls_ffill: 3
+    max_null_pct_per_sensor: 5
+    max_null_dominant_sensor_pct: 30
+  sensor_flag_threshold: 3.0
+  anomaly_sensor_pct: 10.0
+  running_sensor_column: null
+  running_threshold: 0.0
+
+monitoring:
+  rolling_error_window_days: 7
+  drift_weeks_threshold: 6
+  false_alarm_rate_multiplier: 2.0
+  sensor_dropout_hours: 48
+  ks_test_significance: 0.01
+  ks_test_min_sensors: 5
+
+reporting:
+  format: "html"
+  include_plots: true
+  sensor_pairs_to_plot: 10

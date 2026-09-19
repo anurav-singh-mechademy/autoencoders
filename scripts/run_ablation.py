@@ -100,10 +100,10 @@ class UpstreamCache:
         logger.info("Upstream config changed (hash=%s) -- running clean+train", h)
         variant_dir = output_root / f"_upstream_{h}"
 
-        cleaned_arr, sensor_columns, scaler_result, regime_labels, _rejected_arr = step_clean(
+        cleaned_arr, sensor_columns, scaler_result, regime_labels = step_clean(
             data_path, variant_dir, config, equipment_id,
         )
-        model, _thresholds, sensor_baselines, test_arr, sensor_columns, _explainer = step_train(
+        model, _thresholds, sensor_baselines, test_arr, sensor_columns = step_train(
             cleaned_arr, sensor_columns, scaler_result.scaler, variant_dir, config,
             regime_labels=regime_labels,
         )

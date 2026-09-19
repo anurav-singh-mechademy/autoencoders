@@ -26,7 +26,8 @@ class TrainConfig:
     """Training hyperparameters."""
 
     n_sensors: int
-    latent_dim: int | None = None
+    latent_dim: int         # picked via architecture.pick_latent_dim() (PCA-based) by the caller
+    max_hidden_layers: int = 3  # caps encoder/decoder depth -- see architecture.compute_hidden_widths
     dropout: float = 0.2
     lr: float = 1e-3
     weight_decay: float = 1e-5
@@ -125,6 +126,7 @@ def train_model(
         n_sensors=config.n_sensors,
         latent_dim=config.latent_dim,
         dropout=config.dropout,
+        max_hidden_layers=config.max_hidden_layers,
     ).to(device)
 
     optimizer = Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
@@ -132,6 +134,8 @@ def train_model(
 
     history = {"train_loss": [], "val_loss": [], "val_train_ratio": [], "lr": []}
     best_val_loss = float("inf")
+    best_train_loss = None
+    best_epoch = None
     epochs_without_improvement = 0
     best_state = None
 
@@ -149,6 +153,8 @@ def train_model(
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            best_train_loss = train_loss
+            best_epoch = epoch + 1
             epochs_without_improvement = 0
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
         else:
@@ -174,6 +180,18 @@ def train_model(
     if best_state:
         model.load_state_dict(best_state)
     model.to(device)
+
+    # The returned model's weights are the best_epoch checkpoint, not
+    # whatever epoch training happened to be on when patience ran out --
+    # history["train_loss"][-1]/["val_loss"][-1] describe an epoch that was
+    # discarded. Callers reporting "the trained model's" loss/overfit ratio
+    # should use these, not the last entries of the per-epoch lists above.
+    history["best_epoch"] = best_epoch
+    history["best_train_loss"] = best_train_loss
+    history["best_val_loss"] = best_val_loss
+    history["best_val_train_ratio"] = (
+        best_val_loss / best_train_loss if best_train_loss else float("inf")
+    )
 
     logger.info("Training complete. Best val loss: %.6f", best_val_loss)
     return model, history
@@ -228,6 +246,7 @@ def _ray_train_fn(config: dict):
         n_sensors=train_config.n_sensors,
         latent_dim=train_config.latent_dim,
         dropout=train_config.dropout,
+        max_hidden_layers=train_config.max_hidden_layers,
     ).to(device)
 
     optimizer = Adam(model.parameters(), lr=train_config.lr, weight_decay=train_config.weight_decay)

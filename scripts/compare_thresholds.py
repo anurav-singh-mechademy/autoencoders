@@ -10,8 +10,8 @@ computed scores.
 
 Usage:
     python scripts/compare_thresholds.py \\
-        --model-dir output_fastshap/artefacts \\
-        --window-results output_fastshap/evaluation/window_results.csv
+        --model-dir output/artefacts \\
+        --window-results output/evaluation/window_results.csv
 """
 
 from __future__ import annotations

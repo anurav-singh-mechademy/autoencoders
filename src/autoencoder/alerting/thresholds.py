@@ -1,16 +1,32 @@
 """Compute anomaly thresholds from training error distribution.
 
-Three methods available:
+Four methods available:
     1. Robust (default) — median + z*scale on log-transformed scores, where
        scale is a normal-consistent estimator (MAD or IQR) of spread and z is
        the standard-normal quantile for the target percentile. See
-       `compute_thresholds` for the derivation.
+       `compute_thresholds` for the derivation. Assumes the WHOLE
+       log-transformed distribution is roughly unimodal/normal -- breaks
+       down when calibration errors are actually a MIXTURE (a well-behaved
+       bulk plus a real, separate cluster of severe-error windows that
+       survived upstream cleaning, since cleaning's detectors don't share
+       the trained model's own notion of anomalous). MAD/IQR are specifically
+       insensitive to that cluster, so "robust" ends up extrapolating what
+       P99 would be if the cluster didn't exist -- underestimating it.
     2. Percentile — plain empirical P90/P99 of the training error distribution.
-       Simple, but sensitive to noise in exactly the tail it's measuring: with
-       only a few hundred/thousand calibration windows, the specific values
-       sitting at or near the 90th/99th percentile are themselves a small,
-       high-variance sample.
-    3. Elbow method (secondary) — sweep ratio thresholds on test data, find
+       Correctly reflects a real severe-error cluster (unlike "robust"), but
+       P99 is a single order statistic: with only a few hundred/thousand
+       calibration windows, whichever one value happens to sit at that rank
+       is a high-variance estimate that can shift a lot run to run.
+    3. GPD tail (peak-over-threshold) — the extreme-value-theory answer to
+       "the bulk assumption breaks down, and a single tail order-statistic is
+       too noisy": fit a Generalized Pareto Distribution to all exceedances
+       above a moderate threshold (green_yellow), then derive the far
+       (yellow_red) quantile analytically from the fitted tail model. Uses
+       every point in the top decile instead of one point at the 99th
+       percentile, while still being fit FROM the tail rather than
+       extrapolated away from it. See `_gpd_tail_threshold` for the
+       Peaks-Over-Threshold quantile formula (Coles, 2001, ch. 4).
+    4. Elbow method (secondary) — sweep ratio thresholds on test data, find
        the knee where anomaly % stabilises. Adapted from old autoencoder code.
 """
 
@@ -83,12 +99,47 @@ def _robust_log_threshold(log_errors: np.ndarray, percentile: float, spread: str
         raise ValueError(f"Unknown spread estimator: {spread!r}. Use 'mad' or 'iqr'.")
 
 
+def _gpd_tail_threshold(
+    training_errors: np.ndarray,
+    u: float,
+    percentile: float,
+) -> float:
+    """Peaks-Over-Threshold quantile estimate: fit a Generalized Pareto
+    Distribution to the exceedances above `u`, then derive the requested
+    far-tail `percentile` analytically from the fitted tail model, instead
+    of either assuming the whole distribution's shape (the "robust" method's
+    failure mode) or reading a single empirical order statistic (the
+    "percentile" method's failure mode).
+
+    Derivation (Coles, "An Introduction to Statistical Modeling of Extreme
+    Values", 2001, ch. 4): if exceedances (X - u | X > u) follow a GPD with
+    shape xi and scale sigma, and zeta_u = P(X > u) is estimated empirically
+    as (# exceedances / n), then the tail survival function is
+        P(X > x) = zeta_u * [1 + xi*(x-u)/sigma]^(-1/xi)      (x > u)
+    Setting P(X > x_p) = 1 - p and solving for x_p gives the quantile formula
+    used below (the xi -> 0 branch is the limiting exponential-tail case).
+    """
+    errors = np.asarray(training_errors, dtype=np.float64)
+    exceedances = errors[errors > u] - u
+    n = len(errors)
+    n_exceed = len(exceedances)
+
+    shape, _loc, scale = stats.genpareto.fit(exceedances, floc=0.0)
+    zeta_u = n_exceed / n
+    target_exceed_prob = 1.0 - percentile / 100.0
+
+    if abs(shape) < 1e-6:
+        return float(u + scale * np.log(zeta_u / target_exceed_prob))
+    return float(u + (scale / shape) * ((target_exceed_prob / zeta_u) ** (-shape) - 1.0))
+
+
 def compute_thresholds(
     training_errors: np.ndarray,
     green_yellow_percentile: float = 90,
     yellow_red_percentile: float = 99,
     method: str = "robust",
     spread: str = "mad",
+    min_gpd_exceedances: int = 20,
 ) -> dict:
     """Compute Green/Yellow and Yellow/Red thresholds from training errors.
 
@@ -100,23 +151,48 @@ def compute_thresholds(
             scores, where scale is a normal-consistent MAD/IQR estimate of
             spread (see `_robust_log_threshold`). Less sensitive to noise in
             the extreme tail than reading the percentile off directly, since
-            it's estimated from the bulk of the distribution instead.
+            it's estimated from the bulk of the distribution instead --
+            but breaks down when the calibration errors are a genuine
+            mixture (see module docstring).
             "percentile" — plain `np.percentile` on the raw scores.
+            "gpd_tail" — green_yellow via plain percentile (the bulk, where
+            methods already agree); yellow_red via a GPD peak-over-threshold
+            fit to exceedances above green_yellow (see `_gpd_tail_threshold`).
+            Recommended when calibration errors show a bulk + severe-outlier
+            mixture (robust underestimates the tail; plain percentile is a
+            noisy single order statistic).
         spread: "mad" (default) or "iqr" -- which robust spread estimator to
-            use when method="robust". Ignored for method="percentile".
+            use when method="robust". Ignored otherwise.
+        min_gpd_exceedances: method="gpd_tail" only -- minimum number of
+            points above green_yellow needed to fit a stable GPD; falls back
+            to "robust" for yellow_red (logging a warning) if fewer.
 
     Returns:
         Dict with 'green_yellow', 'yellow_red', 'mean', 'std', 'min', 'max'.
     """
+    training_errors = np.asarray(training_errors)
     if method == "percentile":
         green_yellow = float(np.percentile(training_errors, green_yellow_percentile))
         yellow_red = float(np.percentile(training_errors, yellow_red_percentile))
     elif method == "robust":
-        log_errors = _log_transform(np.asarray(training_errors))
+        log_errors = _log_transform(training_errors)
         green_yellow = float(np.exp(_robust_log_threshold(log_errors, green_yellow_percentile, spread)))
         yellow_red = float(np.exp(_robust_log_threshold(log_errors, yellow_red_percentile, spread)))
+    elif method == "gpd_tail":
+        green_yellow = float(np.percentile(training_errors, green_yellow_percentile))
+        n_exceed = int(np.sum(training_errors > green_yellow))
+        if n_exceed < min_gpd_exceedances:
+            logger.warning(
+                "Only %d exceedances above green_yellow=%.6g (need >=%d for a stable GPD fit) -- "
+                "falling back to 'robust' for yellow_red.",
+                n_exceed, green_yellow, min_gpd_exceedances,
+            )
+            log_errors = _log_transform(training_errors)
+            yellow_red = float(np.exp(_robust_log_threshold(log_errors, yellow_red_percentile, spread)))
+        else:
+            yellow_red = _gpd_tail_threshold(training_errors, u=green_yellow, percentile=yellow_red_percentile)
     else:
-        raise ValueError(f"Unknown threshold method: {method!r}. Use 'robust' or 'percentile'.")
+        raise ValueError(f"Unknown threshold method: {method!r}. Use 'robust', 'percentile', or 'gpd_tail'.")
 
     return {
         "green_yellow": green_yellow,
@@ -129,7 +205,7 @@ def compute_thresholds(
         "yellow_red_percentile": yellow_red_percentile,
         "n_samples": len(training_errors),
         "method": method,
-        "spread": spread if method == "robust" else None,
+        "spread": spread if method in ("robust", "gpd_tail") else None,
     }
 
 

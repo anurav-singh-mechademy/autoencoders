@@ -4,7 +4,7 @@ A feedforward-autoencoder pipeline for detecting anomalies in industrial equipme
 sensor data (rotating machinery telemetry: speed, pressure, temperature, vibration,
 etc.). The model learns to reconstruct normal operating behaviour from historian
 data; reconstruction error is calibrated into Green/Yellow/Red health zones and
-turned into alerts, with optional per-sensor attribution to explain *why* a window
+turned into alerts, with a per-sensor MSE-share heuristic to explain *why* a window
 was flagged.
 
 ## Pipeline
@@ -24,8 +24,8 @@ clean → train → infer → alert
 6. **Calibrate** — compute Green/Yellow/Red thresholds (P90/P99) from validation-set
    reconstruction error, plus per-sensor baselines.
 7. **Infer & alert** — classify windows into zones, apply persistence rules (e.g.
-   3+ consecutive Red windows → alert), and optionally attribute the anomaly to the
-   responsible sensors (heuristic, Integrated Gradients, or a trained FastSHAP explainer).
+   3+ consecutive Red windows → alert), and attribute the anomaly to the responsible
+   sensors by their share of total reconstruction error.
 
 Configuration for every stage lives in [configs/default.yaml](configs/default.yaml).
 
@@ -40,9 +40,8 @@ src/autoencoder/
   training/                Dataset splitting, training loop, hyperparameter search
   alerting/                Threshold calibration, zone classification, alert persistence
   inference/               Inference pipeline, missing-data handling, diagnosis
-  explain/                 FastSHAP, Integrated Gradients, masking-based attribution
   monitoring/               Drift detection, retrain triggers, rolling health log
-  artefacts/               Model/explainer (de)serialisation
+  artefacts/               Model (de)serialisation
   reporting/                Cleaning report generation
 scripts/                    Standalone CLIs (see below)
 configs/                    YAML configs (default.yaml, dvn.yaml)
@@ -74,9 +73,6 @@ python main.py --data cleaned_windows.npy --output output/ --skip-cleaning
 
 # Inference only, against an existing trained model
 python main.py --data new_data.csv --output output/ --model-dir output/artefacts/ --infer-only
-
-# Also train a FastSHAP explainer for per-sensor attribution
-python main.py --data sensor_data.csv --output output/ --explain
 ```
 
 ### Standalone scripts
@@ -88,13 +84,50 @@ python main.py --data sensor_data.csv --output output/ --explain
 | `scripts/run_cleaning.py` | Run just the data-cleaning stage and emit a report |
 | `scripts/train.py` | Train the autoencoder on pre-cleaned windows |
 | `scripts/infer.py` | Run inference on a single window or batch |
-| `scripts/explain.py` | Generate and sanity-check FastSHAP attributions |
 | `scripts/evaluate_detection.py` | Score detection accuracy (precision/recall/F1/AUC) against synthetic ground-truth events |
 | `scripts/evaluate_unlabeled.py` | Evaluate against real (unlabeled) data — no precision/recall, since there's no ground truth |
 | `scripts/compare_thresholds.py` | Re-derive Green/Yellow/Red breakdowns under different threshold calibration methods without retraining |
 | `scripts/run_ablation.py` | Sweep config variants through the real pipeline and score each against ground truth |
+| `scripts/score_full_timeline.py` | Score one train/val/test split's windows across a dataset's full timeline |
+| `scripts/evaluate_against_labels.py` | Precision/recall/PR-AUC of a scored test split against real labeled event data |
+| `scripts/recalibrate_prevalence_thresholds.py` | Recalibrate Green/Yellow/Red thresholds against observed event prevalence instead of fixed P90/P99 |
+| `scripts/build_sensor_event_timeline.py` | Build a self-contained HTML chart of raw sensor traces, model zone verdicts, and labeled events for one run's test split |
+| `scripts/analyze_flag_timing.py` | Signed lead/lag distance of each flagged window to the nearest labeled event |
+| `scripts/analyze_signal_alignment.py` | Correlate anomaly_score / ground truth against volatility and magnitude reference metrics |
+| `scripts/analyze_directional_alignment.py` | Correlate anomaly_score / ground truth against signed drift and level (vs. training baseline) |
+| `scripts/analyze_flagged_direction.py` | Split flagged windows by within-window sensor trend and compare precision |
+| `scripts/analyze_flagged_direction_lookback.py` | Split flagged windows by trend over a lookback period and compare precision |
+| `scripts/analyze_reconstruction_error_sign.py` | Retain the sign of the reconstruction residual per window and report precision/PR-AUC/recall split by it |
+| `scripts/rescore_directional.py` | Sweep an asymmetric directional weight on the reconstruction residual without retraining |
+| `scripts/simulate_modality_suppression.py` | Simulate suppressing one reconstruction-error-sign modality's flags and compare metrics |
 
-Run any script with `--help` for its full argument list.
+Run any script with `--help` for its full argument list. The `scripts/investigate_*.py`
+scripts are one-off, ad hoc analyses from a specific investigation (kept for reference,
+not general-purpose tools).
+
+### Ground-truth evaluation workflow
+
+For equipment with real labeled fault events (`data/<eq>/<eq>_combined_with_events.parquet`
++ `<eq>_event_labels_long.parquet`), score the trained model's test split and evaluate it
+against those labels:
+
+```bash
+python scripts/score_full_timeline.py \
+    --data data/<eq>/<eq>_combined_with_events.parquet \
+    --model-dir output_<eq>/artefacts \
+    --split-ids output_<eq>/artefacts/split_window_ids.json \
+    --output output_<eq>/evaluation/window_scores.parquet
+
+python scripts/evaluate_against_labels.py \
+    --window-scores output_<eq>/evaluation/window_scores.parquet \
+    --ground-truth data/<eq>/<eq>_combined_with_events.parquet \
+    --event-labels data/<eq>/<eq>_event_labels_long.parquet \
+    --output output_<eq>/evaluation
+```
+
+`preprocessing.restrict_to_event_sensors` (see `configs/default.yaml`) restricts the
+model's sensor columns to only those implicated by labeled events, computed once over
+the whole file so it can't leak split information.
 
 ## Testing
 

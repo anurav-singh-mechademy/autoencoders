@@ -42,6 +42,8 @@ class TestGridSearch:
             patience=2,
         )
         assert len(result.all_results) == 2
-        # Best should have the lowest val loss
-        best_from_results = min(r["final_val_loss"] for r in result.all_results)
+        # Best should have the lowest *best-epoch* val loss across trials --
+        # not each trial's last-epoch val loss, which depends on where that
+        # trial's early stopping happened to land, not on trial quality.
+        best_from_results = min(r["best_val_loss"] for r in result.all_results)
         assert result.best_val_loss == pytest.approx(best_from_results, abs=0.01)

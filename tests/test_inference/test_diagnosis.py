@@ -88,31 +88,3 @@ class TestDiagnoseWithBaselines:
         result = diagnose_window(x, x_hat, sensor_baselines=baselines)
         assert not np.any(np.isnan(result["error_ratios"]))
         assert not np.any(np.isinf(result["error_ratios"]))
-
-
-class TestDiagnoseWithAttributionValues:
-    def test_attribution_values_used_for_ranking(self):
-        x = torch.randn(120, 5)
-        x_hat = torch.randn(120, 5)
-        attribution = np.array([0.01, -0.5, 0.02, 0.4, 0.0])
-        result = diagnose_window(x, x_hat, top_k=2, attribution_values=attribution, attribution_method="fastshap")
-        assert result["attribution_method"] == "fastshap"
-        top_indices = [c["index"] for c in result["top_contributors"]]
-        assert top_indices == [1, 3]  # ranked by |attribution value|
-
-    def test_attribution_value_in_top_contributors(self):
-        x = torch.randn(120, 4)
-        x_hat = torch.randn(120, 4)
-        attribution = np.array([1.0, -2.0, 0.5, 0.1])
-        result = diagnose_window(x, x_hat, top_k=4, attribution_values=attribution, attribution_method="integrated_gradients")
-        assert result["attribution_method"] == "integrated_gradients"
-        for c in result["top_contributors"]:
-            assert "attribution_value" in c
-            assert c["attribution_value"] == pytest.approx(attribution[c["index"]])
-
-    def test_default_attribution_method_is_heuristic(self):
-        x = torch.randn(120, 5)
-        x_hat = torch.randn(120, 5)
-        result = diagnose_window(x, x_hat)
-        assert result["attribution_method"] == "heuristic"
-        assert "attribution_values" not in result

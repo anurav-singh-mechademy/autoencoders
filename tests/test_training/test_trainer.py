@@ -72,3 +72,20 @@ class TestTrainModel:
         torch.manual_seed(2)
         _, history2 = train_model(small_train_data, small_val_data, config)
         assert history1["train_loss"] != history2["train_loss"]
+
+    def test_best_epoch_tracked_separately_from_last_epoch(self, small_train_data, small_val_data):
+        # With enough epochs for val loss to start rising again after its
+        # minimum, history["best_*"] must reflect the restored checkpoint
+        # (the epoch val loss was lowest), not history["*_loss"][-1] (the
+        # last epoch trained, which patience allows to be worse).
+        config = TrainConfig(n_sensors=20, latent_dim=8, max_epochs=15, patience=15, seed=123)
+        _, history = train_model(small_train_data, small_val_data, config)
+
+        best_idx = min(range(len(history["val_loss"])), key=lambda i: history["val_loss"][i])
+        assert history["best_epoch"] == best_idx + 1
+        assert history["best_train_loss"] == pytest.approx(history["train_loss"][best_idx])
+        assert history["best_val_loss"] == pytest.approx(history["val_loss"][best_idx])
+        assert history["best_val_train_ratio"] == pytest.approx(
+            history["best_val_loss"] / history["best_train_loss"]
+        )
+        assert history["best_val_loss"] == pytest.approx(min(history["val_loss"]))

@@ -47,3 +47,6 @@ htmlcov/
 output/
 output*/
 *.log
+notebooks/labeling_build/
+logs/
+viz/

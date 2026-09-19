@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from autoencoder.model.architecture import get_latent_dim
+from autoencoder.model.architecture import pick_latent_dim, compute_hidden_widths
 from autoencoder.model.loss import per_row_mse, window_anomaly_score
 from autoencoder.training.dataset import split_windows, windows_to_numpy
 from autoencoder.training.trainer import TrainConfig, train_model
@@ -91,22 +91,49 @@ def main():
     test_arr = windows_to_numpy(test_w) if test_w else None
 
     # Build config
-    latent_dim = get_latent_dim(n_sensors)
+    model_cfg = config.get("model", {})
+    latent_dim = model_cfg.get("latent_dim")
+    if latent_dim is None:
+        latent_dim = pick_latent_dim(
+            train_arr.reshape(-1, n_sensors),
+            variance_threshold=model_cfg.get("latent_variance_threshold", 0.95),
+            floor=model_cfg.get("latent_dim_floor", 4),
+        )
+        logger.info("Picked latent_dim=%d via PCA", latent_dim)
+
+    # Depth is capped at max_hidden_layers, and patience scales modestly with
+    # depth while staying above lr_patience -- see the equivalent comment in
+    # main.py's step_train for the full rationale.
+    max_hidden_layers = model_cfg.get("max_hidden_layers", 3)
+    hidden_widths = compute_hidden_widths(n_sensors, latent_dim, max_hidden_layers)
+    lr_patience = train_cfg.get("lr_scheduler", {}).get("patience", 10)
+    patience_per_layer = train_cfg.get("patience_per_hidden_layer", 2)
+    patience = train_cfg.get("early_stopping_patience")
+    if patience is None:
+        patience = lr_patience + patience_per_layer * (len(hidden_widths) + 1)
+        logger.info("Picked early_stopping_patience=%d", patience)
+
     tc = TrainConfig(
         n_sensors=n_sensors,
         latent_dim=latent_dim,
+        max_hidden_layers=max_hidden_layers,
         dropout=config.get("model", {}).get("dropout", 0.2),
         lr=train_cfg.get("learning_rate", 1e-3),
         weight_decay=train_cfg.get("weight_decay", 1e-5),
         max_epochs=train_cfg.get("max_epochs", 150),
-        patience=train_cfg.get("early_stopping_patience", 15),
+        patience=patience,
         lr_factor=train_cfg.get("lr_scheduler", {}).get("factor", 0.5),
-        lr_patience=train_cfg.get("lr_scheduler", {}).get("patience", 10),
+        lr_patience=lr_patience,
     )
 
     # Train
     logger.info("Training: latent_dim=%d, lr=%.4f, max_epochs=%d", latent_dim, tc.lr, tc.max_epochs)
     model, history = train_model(train_arr, val_arr, tc)
+    logger.info(
+        "Training done: %d epochs run, best epoch %d: train=%.6f, val=%.6f, val/train=%.2f",
+        len(history["train_loss"]), history["best_epoch"],
+        history["best_train_loss"], history["best_val_loss"], history["best_val_train_ratio"],
+    )
 
     # Compute calibration errors for thresholds (train or val, see main.step_train
     # for why val is preferred -- train-error calibration is optimistic).
@@ -139,12 +166,17 @@ def main():
     metadata = {
         "n_sensors": n_sensors,
         "latent_dim": latent_dim,
+        "max_hidden_layers": max_hidden_layers,
         "epochs_trained": len(history["train_loss"]),
-        "final_train_loss": history["train_loss"][-1],
-        "final_val_loss": history["val_loss"][-1],
+        "best_epoch": history["best_epoch"],
+        "final_train_loss": history["best_train_loss"],
+        "final_val_loss": history["best_val_loss"],
+        "last_epoch_train_loss": history["train_loss"][-1],
+        "last_epoch_val_loss": history["val_loss"][-1],
         "n_train_windows": len(train_w),
         "n_val_windows": len(val_w),
         "n_test_windows": len(test_w) if test_w else 0,
+        "tail_compression_scale": config.get("preprocessing", {}).get("tail_compression_scale"),
     }
 
     # Load scaler if provided

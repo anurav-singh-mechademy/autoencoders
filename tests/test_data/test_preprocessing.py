@@ -10,6 +10,7 @@ from autoencoder.data.preprocessing import (
     construct_windows_with_metadata,
     fit_robust_scaler,
     remove_low_variance_columns,
+    remove_null_or_stuck_columns,
     WINDOW_ROWS,
 )
 
@@ -63,6 +64,76 @@ class TestRemoveLowVarianceColumns:
             assert result.variances[col] > 0
 
 
+class TestRemoveNullOrStuckColumns:
+    """A sensor flat/missing in MOST windows can still have healthy
+    whole-file variance if it has a few genuine excursions spread across a
+    long series -- exactly the case remove_low_variance_columns can't
+    catch. These tests build that scenario directly: 10 windows of 120 rows
+    (synthetic_df/sensor_columns from conftest), one sensor flat in 9 of 10
+    windows with a single real excursion in the 10th.
+
+    Null and stuck are independent, separately-thresholded checks: by
+    default (max_stuck_pct=100.0), a column is NEVER dropped for merely
+    being stuck -- a window-fraction can't exceed 100%, so only a genuinely
+    null-dominated column gets removed unless max_stuck_pct is explicitly
+    lowered."""
+
+    def test_keeps_healthy_columns(self, synthetic_df, sensor_columns):
+        result = remove_null_or_stuck_columns(synthetic_df, sensor_columns, window_size=WINDOW_ROWS)
+        assert result.removed_columns == []
+        assert result.kept_columns == sensor_columns
+
+    def test_default_never_drops_for_stuck_alone(self, synthetic_df, sensor_columns):
+        df = synthetic_df.copy()
+        target = sensor_columns[0]
+        values = df[target].to_numpy().copy()
+        values[:] = 42.0  # stuck in EVERY window (100%)
+        df[target] = values
+
+        # Confirm the premise: the low-variance filter does NOT catch this
+        # (a perfectly constant column IS actually near-zero variance --
+        # this specific case would be caught by remove_low_variance_columns;
+        # the point here is remove_null_or_stuck_columns itself, at its
+        # default max_stuck_pct=100, never removes for stuck regardless).
+        result = remove_null_or_stuck_columns(df, sensor_columns, window_size=WINDOW_ROWS)
+        assert target not in result.removed_columns
+        assert result.stuck_pct[target] == pytest.approx(100.0)
+
+    def test_removes_column_null_in_most_windows(self, synthetic_df, sensor_columns):
+        df = synthetic_df.copy()
+        target = sensor_columns[1]
+        values = df[target].to_numpy().copy()
+        values[: 6 * WINDOW_ROWS] = np.nan  # null in windows 0-5 (60%)
+        df[target] = values
+
+        result = remove_null_or_stuck_columns(df, sensor_columns, window_size=WINDOW_ROWS, max_null_pct=50.0)
+        assert target in result.removed_columns
+        assert result.null_pct[target] == pytest.approx(60.0)
+
+    def test_explicit_max_stuck_pct_still_removes_frequently_stuck_column(self, synthetic_df, sensor_columns):
+        df = synthetic_df.copy()
+        target = sensor_columns[0]
+        values = df[target].to_numpy().copy()
+        for w in range(9):
+            values[w * WINDOW_ROWS:(w + 1) * WINDOW_ROWS] = 42.0
+        df[target] = values
+
+        # 90% stuck: default (max_stuck_pct=100) keeps it...
+        default_result = remove_null_or_stuck_columns(df, sensor_columns, window_size=WINDOW_ROWS)
+        assert target not in default_result.removed_columns
+        assert default_result.stuck_pct[target] == pytest.approx(90.0)
+        # ...but an explicit, lower max_stuck_pct still removes it.
+        strict_result = remove_null_or_stuck_columns(df, sensor_columns, window_size=WINDOW_ROWS, max_stuck_pct=50.0)
+        assert target in strict_result.removed_columns
+
+    def test_pct_reported_for_every_column(self, synthetic_df, sensor_columns):
+        result = remove_null_or_stuck_columns(synthetic_df, sensor_columns, window_size=WINDOW_ROWS)
+        assert set(result.null_pct.keys()) == set(sensor_columns)
+        assert set(result.stuck_pct.keys()) == set(sensor_columns)
+        assert all(p == pytest.approx(0.0) for p in result.null_pct.values())
+        assert all(p == pytest.approx(0.0) for p in result.stuck_pct.values())
+
+
 class TestRobustScaler:
     def test_fit_scaler(self, synthetic_df, sensor_columns):
         result = fit_robust_scaler(synthetic_df, sensor_columns)
@@ -88,6 +159,54 @@ class TestRobustScaler:
         scaler_result = fit_robust_scaler(synthetic_df, sensor_columns)
         scaled = apply_scaling(synthetic_df, scaler_result)
         pd.testing.assert_series_equal(scaled["timestamp"], synthetic_df["timestamp"])
+
+    def test_tail_compression_none_matches_default(self, synthetic_df, sensor_columns):
+        scaler_result = fit_robust_scaler(synthetic_df, sensor_columns)
+        scaled_default = apply_scaling(synthetic_df, scaler_result)
+        scaled_explicit_none = apply_scaling(synthetic_df, scaler_result, tail_compression_scale=None)
+        pd.testing.assert_frame_equal(scaled_default, scaled_explicit_none)
+
+    def test_tail_compression_near_identity_for_small_values(self, synthetic_df, sensor_columns):
+        # asinh(x) ~= x for |x| << c, so well-behaved (non-outlier) sensor
+        # readings should barely move.
+        scaler_result = fit_robust_scaler(synthetic_df, sensor_columns)
+        uncompressed = apply_scaling(synthetic_df, scaler_result)
+        compressed = apply_scaling(synthetic_df, scaler_result, tail_compression_scale=20.0)
+        diff = (compressed[sensor_columns] - uncompressed[sensor_columns]).abs()
+        assert (diff < 0.05).values.all()
+
+    def test_tail_compression_bounds_extreme_outliers(self, synthetic_df, sensor_columns):
+        # A glitch reading thousands of sigma out should compress to a
+        # tame, bounded magnitude instead of passing through linearly.
+        df = synthetic_df.copy()
+        col = sensor_columns[0]
+        scaler_result = fit_robust_scaler(df, sensor_columns)
+        glitch_df = df.copy()
+        glitch_df.loc[0, col] = df[col].median() + scaler_result.scaler.scale_[0] * 1e9
+
+        uncompressed = apply_scaling(glitch_df, scaler_result)
+        compressed = apply_scaling(glitch_df, scaler_result, tail_compression_scale=20.0)
+
+        assert abs(uncompressed.loc[0, col]) > 1e8
+        assert abs(compressed.loc[0, col]) < 1000
+
+    def test_tail_compression_preserves_relative_ordering(self, synthetic_df, sensor_columns):
+        # A more extreme outlier should still compress to a larger value
+        # than a milder one -- unlike a hard clip, where both would
+        # saturate to the same plateau.
+        col = sensor_columns[0]
+        scaler_result = fit_robust_scaler(synthetic_df, sensor_columns)
+
+        mild_df = synthetic_df.copy()
+        mild_df.loc[0, col] = synthetic_df[col].median() + scaler_result.scaler.scale_[0] * 100
+
+        severe_df = synthetic_df.copy()
+        severe_df.loc[0, col] = synthetic_df[col].median() + scaler_result.scaler.scale_[0] * 1e6
+
+        mild_compressed = apply_scaling(mild_df, scaler_result, tail_compression_scale=20.0)
+        severe_compressed = apply_scaling(severe_df, scaler_result, tail_compression_scale=20.0)
+
+        assert severe_compressed.loc[0, col] > mild_compressed.loc[0, col]
 
 
 class TestConstructWindows:

@@ -48,10 +48,11 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def run_inference(windows, model, scaler, sensor_baselines, sensor_columns, thresholds, config):
+def run_inference(windows, model, scaler, sensor_baselines, sensor_columns, thresholds, config, tail_compression_scale=None):
     inference_cfg = config.get("inference", {})
     flag_threshold = inference_cfg.get("sensor_flag_threshold", 3.0)
     anomaly_sensor_pct = inference_cfg.get("anomaly_sensor_pct", 10.0)
+    missing_data_cfg = inference_cfg.get("missing_data", {})
     top_k = min(10, max(1, len(sensor_columns) // 5))
 
     records = []
@@ -65,10 +66,15 @@ def run_inference(windows, model, scaler, sensor_baselines, sensor_columns, thre
             sensor_baselines=sensor_baselines,
             flag_threshold=flag_threshold,
             anomaly_sensor_pct=anomaly_sensor_pct,
+            max_null_pct=missing_data_cfg.get("max_null_pct_per_sensor", 5.0),
+            max_consecutive_nulls=missing_data_cfg.get("max_consecutive_nulls_ffill", 3),
+            max_null_dominant_sensor_pct=missing_data_cfg.get("max_null_dominant_sensor_pct", 30.0),
             already_scaled=False,
+            tail_compression_scale=tail_compression_scale,
         )
         zone = classify_zone(result.window_score, thresholds) if result.usable else None
         top_names = [c["name"] for c in result.top_contributors] if result.usable else []
+        masked_names = [sensor_columns[i] for i in result.masked_sensors] if result.masked_sensors else []
 
         records.append({
             "window_id": w["window_id"],
@@ -79,6 +85,7 @@ def run_inference(windows, model, scaler, sensor_baselines, sensor_columns, thre
             "usable": result.usable,
             "quality_flags": ",".join(result.quality_flags),
             "top_sensors": top_names,
+            "masked_sensors": ",".join(masked_names),
         })
     return records
 
@@ -183,6 +190,21 @@ def summarize(records: list[dict], alert_levels: list[str], top_k: int) -> str:
     lines.append("")
 
     usable = df[df["usable"]]
+
+    masked_counter = Counter()
+    n_windows_with_masking = 0
+    for masked in usable["masked_sensors"]:
+        if masked:
+            n_windows_with_masking += 1
+            masked_counter.update(masked.split(","))
+    if n_windows_with_masking:
+        lines.append(
+            f"Null-dominant sensors masked out (window still scored on the rest): "
+            f"{n_windows_with_masking} / {len(usable)} usable windows ({n_windows_with_masking / len(usable) * 100:.1f}%)"
+        )
+        for name, count in masked_counter.most_common(15):
+            lines.append(f"  {name:35s} masked in {count} windows ({count / len(usable) * 100:.1f}%)")
+        lines.append("")
     zone_counts = usable["zone"].value_counts()
     lines.append("Zone distribution (usable windows):")
     for z in ["green", "yellow", "red"]:
@@ -249,7 +271,10 @@ def main():
     )
     logger.info("Constructed %d windows from %d raw rows", len(windows), len(df))
 
-    records = run_inference(windows, model, scaler, sensor_baselines, sensor_columns, thresholds, config)
+    records = run_inference(
+        windows, model, scaler, sensor_baselines, sensor_columns, thresholds, config,
+        tail_compression_scale=metadata.get("tail_compression_scale"),
+    )
     alert_levels = apply_persistence_timeline(records, persistence_cfg)
 
     top_k = min(10, max(1, len(sensor_columns) // 5))

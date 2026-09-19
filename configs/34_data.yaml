@@ -1,0 +1,132 @@
+# Autoencoder Equipment Health Monitoring — 34_data.parquet config
+# Equipment 34 "Condensed Water Pump A". Derived from configs/40_data.yaml:
+# same 15-second historian cadence and "timestamp" column, and the same
+# extreme-tail-value problem (max |robust z| ~24000 across 73 sensors here,
+# vs. 40_data's ~2e9) so it reuses the same asinh tail-compression fix.
+
+data:
+  frequency_seconds: 15
+  window_rows: 120            # 30 minutes = 120 rows at 15-sec intervals
+  timestamp_column: "timestamp"
+
+preprocessing:
+  scaler: "robust"            # RobustScaler: (X - median) / IQR, fit on train split only
+  tail_compression_scale: 20  # Same c*asinh(z/c) fix as 40_data.yaml (see
+                               # src/autoencoder/data/preprocessing.py apply_scaling()
+                               # docstring) -- confirmed this data has the same kind of
+                               # extreme-outlier tail (max |z| ~24000 pre-compression).
+  sensor_dropout:
+    threshold_pct: 30         # Real historian export, same deadband/compression-logging
+                               # profile as 40_data/dvn_data_1 (avg 14.5% nulls per sensor
+                               # column) -- 5% default would reject too many windows.
+
+regime:
+  method: "kmeans"
+  n_clusters: 3               # Low / Medium / High
+  features: []                # No speed/power/discharge_pressure-equivalent tags in this
+                               # equipment's sensor set (pump tags: P901A-PUCE-*, etc.) --
+                               # empty list is filtered to empty in main.py, which falls
+                               # back to segment_regimes_unsupervised() (PCA + KMeans on
+                               # per-window sensor means) automatically.
+
+transient:
+  speed_change_threshold_pct: 15   # % of operating range (unused without a speed feature,
+                                     # kept at default)
+
+cleaning:
+  order:
+    - "isolation_forest"
+    - "pca"
+    - "mahalanobis"
+  isolation_forest:
+    contamination: 0.05
+    n_estimators: 200
+    random_state: 42
+  pca:
+    variance_threshold: 0.95   # Retain components explaining 95% variance
+    outlier_std: 3.0           # Flag points > 3 std in PCA space
+  mahalanobis:
+    chi2_percentile: 97.5      # Flag points above 97.5th percentile of chi2 distribution
+  max_removal_pct: 40          # Warn if >40% of data removed overall
+
+model:
+  # latent_dim is picked automatically via PCA on the scaled training data
+  # (architecture.pick_latent_dim) -- the number of components needed to
+  # explain latent_variance_threshold of variance, floored at
+  # latent_dim_floor. Set latent_dim explicitly here (an integer) to bypass
+  # this and force a specific value instead.
+  latent_variance_threshold: 0.95
+  latent_dim_floor: 4
+  max_hidden_layers: 3        # caps encoder/decoder depth regardless of the n_sensors/latent_dim gap --
+                               # verified a 7-hidden-layer network (476 sensors -> latent=4) got stuck in
+                               # a stable bad plateau immediately after epoch 1, unmoved by 46 epochs and
+                               # two LR reductions; a shallower network with a larger final compression
+                               # step is far more reliably trainable with plain Adam.
+  dropout: 0.2
+  norm: "layer"               # LayerNorm, not BatchNorm -- batches are single autocorrelated windows
+  loss: "mse"
+
+training:
+  optimizer: "adam"
+  learning_rate: 0.001
+  weight_decay: 0.0003        # Raised from 1e-5 -- too weak to keep val loss from diverging
+                               # while train loss kept improving. See configs/default.yaml.
+  lr_scheduler:
+    type: "reduce_on_plateau"
+    factor: 0.5
+    patience: 10
+  max_epochs: 150
+  # early_stopping_patience is picked automatically, scaling with network
+  # depth and staying above lr_patience. See configs/default.yaml.
+  patience_per_hidden_layer: 2  # extra patience per layer beyond lr_patience -- kept modest now that
+                               # depth is capped (see max_hidden_layers below); more patience alone
+                               # was verified not to help an uncapped-depth network converge further
+  overfit_ratio_threshold: 1.5 # Flag if val/train loss ratio exceeds this
+  batch_size_rows: 256
+  splits:
+    train: 0.85
+    val: 0.10
+    test: 0.05
+  seed: 42
+
+thresholds:
+  green_yellow: 90
+  yellow_red: 99
+  method: "robust"
+  spread: "mad"
+  calibration_source: "val"
+  score_aggregation: "p95"
+
+alerting:
+  persistence:
+    red_to_yellow_alert: 2
+    red_to_red_alert: 3
+    yellow_consecutive: 4
+    mixed_window_hours: 2
+
+inference:
+  missing_data:
+    max_consecutive_nulls_ffill: 3
+    max_null_pct_per_sensor: 5   # per-sensor: raw null % within a window above which
+                                 # that sensor is masked out of scoring
+    max_null_dominant_sensor_pct: 30  # window-level: % of ALL sensors allowed to be
+                                 # null-dominant before the whole window is rejected
+                                 # instead of scored with those sensors masked. Matches
+                                 # preprocessing.sensor_dropout.threshold_pct above.
+  sensor_flag_threshold: 3.0
+  anomaly_sensor_pct: 10.0
+  running_sensor_column: null
+  running_threshold: 0.0
+
+monitoring:
+  rolling_error_window_days: 7
+  drift_weeks_threshold: 6
+  false_alarm_rate_multiplier: 2.0
+  sensor_dropout_hours: 48
+  ks_test_significance: 0.01
+  ks_test_min_sensors: 5
+
+reporting:
+  format: "html"
+  include_plots: true
+  sensor_pairs_to_plot: 10

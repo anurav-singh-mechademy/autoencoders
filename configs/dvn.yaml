@@ -11,6 +11,11 @@ data:
 
 preprocessing:
   scaler: "robust"            # RobustScaler: (X - median) / IQR, fit on train split only
+  tail_compression_scale: null # If set (e.g. 15-25), apply c*asinh(z/c) to the RobustScaler
+                               # output -- use if IQR-degenerate tags (near-constant bulk + rare
+                               # extreme/glitch readings) are found here too. See
+                               # apply_scaling()'s docstring in src/autoencoder/data/preprocessing.py
+                               # and configs/40_data.yaml for a worked example on a similar dataset.
   sensor_dropout:
     threshold_pct: 30         # Real historian data (unlike the synthetic generator) is deadband/
                                # compression-logged: even the cleanest tags read as flat ("stuck")
@@ -49,9 +54,15 @@ cleaning:
   max_removal_pct: 40          # Warn if >40% of data removed overall
 
 model:
-  latent_dim_rule: "max(8, N//8)"
-  encoder_layers: [128, 64, 32]
-  decoder_layers: [32, 64, 128]
+  # latent_dim is picked automatically via PCA on the scaled training data --
+  # see the equivalent comment in configs/default.yaml.
+  latent_variance_threshold: 0.95
+  latent_dim_floor: 4
+  max_hidden_layers: 3        # caps encoder/decoder depth regardless of the n_sensors/latent_dim gap --
+                               # verified a 7-hidden-layer network (476 sensors -> latent=4) got stuck in
+                               # a stable bad plateau immediately after epoch 1, unmoved by 46 epochs and
+                               # two LR reductions; a shallower network with a larger final compression
+                               # step is far more reliably trainable with plain Adam.
   dropout: 0.2
   norm: "layer"               # LayerNorm, not BatchNorm -- batches are single autocorrelated windows
   loss: "mse"
@@ -59,13 +70,18 @@ model:
 training:
   optimizer: "adam"
   learning_rate: 0.001
-  weight_decay: 0.00001
+  weight_decay: 0.0003        # Raised from 1e-5 -- too weak to keep val loss from diverging
+                               # while train loss kept improving. See configs/default.yaml.
   lr_scheduler:
     type: "reduce_on_plateau"
     factor: 0.5
     patience: 10
   max_epochs: 150
-  early_stopping_patience: 15
+  # early_stopping_patience is picked automatically, scaling with network
+  # depth and staying above lr_patience. See configs/default.yaml.
+  patience_per_hidden_layer: 2  # extra patience per layer beyond lr_patience -- kept modest now that
+                               # depth is capped (see max_hidden_layers below); more patience alone
+                               # was verified not to help an uncapped-depth network converge further
   overfit_ratio_threshold: 1.5 # Flag if val/train loss ratio exceeds this
   batch_size_rows: 256         # shuffled rows across all windows per gradient update --
                                # deviates from spec's 1-window-per-step recipe, which empirically
@@ -100,31 +116,19 @@ alerting:
 inference:
   missing_data:
     max_consecutive_nulls_ffill: 3
-    max_null_pct_per_sensor: 5
+    max_null_pct_per_sensor: 5   # per-sensor: raw null % within a window above which
+                                 # that sensor is masked out of scoring
+    max_null_dominant_sensor_pct: 30  # window-level: % of ALL sensors allowed to be
+                                 # null-dominant before the whole window is rejected
+                                 # instead of scored with those sensors masked. Matches
+                                 # preprocessing.sensor_dropout.threshold_pct above --
+                                 # same deadband/compression-logging tolerance verified
+                                 # for this dataset (p90 natural floor 23.5%, outage
+                                 # floor 45%+).
   sensor_flag_threshold: 3.0        # error ratio above which sensor is flagged
   anomaly_sensor_pct: 10.0          # % of flagged sensors to declare anomalous
   running_sensor_column: null       # sensor name/index for running detection (null = skip)
   running_threshold: 0.0            # min value for "running"
-  attribution_method: "heuristic"   # "heuristic" (default) or "integrated_gradients" -- see
-                                     # configs/default.yaml for the full explanation
-  integrated_gradients:
-    n_steps: 50
-    baseline: 0.0
-
-explainability:
-  enabled: false                # opt-in FastSHAP explainer; false = existing per-sensor MSE heuristic
-  hidden_dim: 128
-  dropout: 0.1
-  learning_rate: 0.001
-  weight_decay: 0.0              # L2 reg here fights the input-sensitivity FastSHAP needs (verified)
-  max_epochs: 100
-  early_stopping_patience: 10
-  lr_scheduler:
-    factor: 0.5
-    patience: 5
-  n_mask_samples: 32
-  batch_size: 256
-  seed: 42
 
 monitoring:
   rolling_error_window_days: 7

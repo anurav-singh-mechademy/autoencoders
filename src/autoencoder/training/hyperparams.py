@@ -74,23 +74,28 @@ def grid_search(
         logger.info("Trial %d/%d: latent=%d lr=%.4f dropout=%.2f", i + 1, len(combos), ld, lr, do)
 
         model, history = train_model(train_windows, val_windows, config)
-        final_val = history["val_loss"][-1]
+        # Compare trials by each one's own best (restored) epoch, not
+        # whichever epoch its particular early-stopping run happened to end
+        # on -- two trials with different patience/convergence speed aren't
+        # comparable at "the last epoch," only at "the best each achieved".
+        trial_best_val = history["best_val_loss"]
 
         trial = {
             "latent_dim": ld,
             "learning_rate": lr,
             "dropout": do,
-            "final_val_loss": final_val,
-            "best_val_loss": min(history["val_loss"]),
+            "final_val_loss": history["val_loss"][-1],
+            "best_val_loss": trial_best_val,
+            "best_epoch": history["best_epoch"],
             "epochs_trained": len(history["val_loss"]),
         }
         all_results.append(trial)
 
-        if final_val < best_val_loss:
-            best_val_loss = final_val
+        if trial_best_val < best_val_loss:
+            best_val_loss = trial_best_val
             best_config = config
 
-        logger.info("  -> val_loss=%.6f (best so far: %.6f)", final_val, best_val_loss)
+        logger.info("  -> best val_loss=%.6f (best so far: %.6f)", trial_best_val, best_val_loss)
 
     return SearchResult(
         best_config=best_config,

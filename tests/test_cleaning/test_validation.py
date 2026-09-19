@@ -1,5 +1,7 @@
 """Tests for cleaning validation module."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -41,3 +43,23 @@ class TestValidateCleaning:
             max_removal_pct=40.0,
         )
         assert report.excessive_removal is True
+
+    def test_sensor_name_with_slash_does_not_break_scatter_plot_path(self, synthetic_windows, sensor_columns, tmp_path):
+        # Real historian tag naming convention (e.g. "5LI-5071D/PV") -- a "/"
+        # embedded in a sensor name must not be read as a path separator when
+        # building the scatter-plot filename (regression: this used to raise
+        # FileNotFoundError trying to save into a non-existent subdirectory).
+        slashy_columns = list(sensor_columns)
+        slashy_columns[0] = "5LI-5071D/PV"
+        report = validate_cleaning(
+            original_windows=synthetic_windows,
+            cleaned_windows=synthetic_windows[:8],
+            per_step_removals={"isolation_forest": 1, "pca": 1, "mahalanobis": 0},
+            sensor_columns=slashy_columns,
+            output_dir=str(tmp_path),
+            n_sensor_pairs=3,
+        )
+        assert len(report.plot_paths) > 0
+        for path in report.plot_paths:
+            assert Path(path).exists()
+            assert "/" not in Path(path).name
