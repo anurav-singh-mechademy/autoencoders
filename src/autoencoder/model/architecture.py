@@ -97,12 +97,22 @@ class Autoencoder(nn.Module):
     instead, so it has no dependence on how windows are batched.
     """
 
-    def __init__(self, n_sensors: int, latent_dim: int, dropout: float = 0.2, max_hidden_layers: int = 3):
+    def __init__(
+        self,
+        n_sensors: int,
+        latent_dim: int,
+        dropout: float = 0.2,
+        max_hidden_layers: int = 3,
+        hidden_widths: list[int] | None = None,
+    ):
         super().__init__()
         self.n_sensors = n_sensors
         self.latent_dim = latent_dim
         self.max_hidden_layers = max_hidden_layers
-        widths = compute_hidden_widths(n_sensors, latent_dim, max_hidden_layers)
+        # hidden_widths overrides the halving funnel (e.g. [n_sensors, n_sensors // 2]) -- a funnel that halves
+        # straight down to the bottleneck under-fits relative to PCA with the same latent size (protocol_v2, 2026-09-21).
+        widths = list(hidden_widths) if hidden_widths is not None else compute_hidden_widths(n_sensors, latent_dim, max_hidden_layers)
+        self.hidden_widths = widths
 
         encoder_layers: list[nn.Module] = []
         prev = n_sensors

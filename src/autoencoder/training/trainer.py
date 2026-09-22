@@ -38,6 +38,7 @@ class TrainConfig:
     overfit_ratio_threshold: float = 1.5
     batch_size: int = 256
     seed: int | None = None
+    hidden_widths: list[int] | None = None  # explicit encoder widths; None -> architecture.compute_hidden_widths
 
 
 def train_one_epoch(
@@ -127,6 +128,7 @@ def train_model(
         latent_dim=config.latent_dim,
         dropout=config.dropout,
         max_hidden_layers=config.max_hidden_layers,
+        hidden_widths=config.hidden_widths,
     ).to(device)
 
     optimizer = Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
